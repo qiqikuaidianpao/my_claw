@@ -237,6 +237,11 @@ class MyClawTool(Tool):
         user_doc = persona.read("USER.md").strip()
         if stage == "1" and not user_doc and len(query.strip()) <= 16:
             name = query.strip().strip("，。！! ")
+            # 问候语/问句不是称呼——再问一次而非误存
+            greetings = {"在吗", "在不在", "你好", "您好", "嗨", "hi", "hello", "你好呀", "哈喽", "ok", "好的"}
+            if name.lower() in greetings or name.endswith(("?", "？")):
+                yield self.create_text_message("我还在的～不过还想确认一下：怎么称呼你？（直接回复称呼即可）")
+                return True
             persona.write("USER.md", "称呼：" + name)
             persona.write("IDENTITY.md", "# 身份\nmy_claw，" + name + "的智能办公助手。可靠、简洁、执行导向。")
             kv.set(stage_key, b"done")
