@@ -20,11 +20,36 @@ from dify_plugin import Tool
 
 
 class SkillManagerTool(Tool):
+    @staticmethod
+    def _parse_command(raw: str) -> tuple[str, int]:
+        """接受英文枚举值或中文自然语言命令（原 mini_claw tm 的用法）。
+
+        查看/列出技能 → list；新增/安装技能 → install；
+        删除技能N → remove N；下载/导出技能N → download N。
+        """
+        import re
+
+        s = raw.strip().lower()
+        if s in {"list", "install", "remove", "download"}:
+            return s, 0
+        if ("新增" in raw or "安装" in raw or "上传" in raw):
+            return "install", 0
+        if "删除" in raw or "卸载" in raw:
+            m = re.search(r"(\d+)", raw)
+            return "remove", int(m.group(1)) if m else 0
+        if "下载" in raw or "导出" in raw:
+            m = re.search(r"(\d+)", raw)
+            return "download", int(m.group(1)) if m else 0
+        if "查看" in raw or "列出" in raw or "列表" in raw or "技能" in raw:
+            return "list", 0
+        return s, 0
+
     def _invoke(self, tool_parameters: dict[str, Any]) -> Generator[ToolInvokeMessage, None, None]:
-        action = str(tool_parameters.get("action") or "list").strip().lower()
+        action, index = self._parse_command(str(tool_parameters.get("action") or "list").strip())
         if action not in {"list", "install", "remove", "download"}:
-            yield self.create_text_message("❌无效操作：" + action + "（仅支持 list / install / remove / download）")
+            yield self.create_text_message("❌无法识别操作：" + action + "（支持：查看技能 / 新增技能 / 删除技能N / 下载技能N，或 list / install / remove / download）")
             return
+        tool_parameters["index"] = index if index else tool_parameters.get("index")
         skills_root = str(tool_parameters.get("skills_root") or "") or os.environ.get("SKILLS_ROOT") or os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills"
         )
