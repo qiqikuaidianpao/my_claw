@@ -1,0 +1,140 @@
+app:
+  description: 'my_claw smoke test: start -> my_claw -> answer'
+  icon: 🧪
+  icon_background: '#FFEAD5'
+  mode: advanced-chat
+  name: my_claw冒烟测试
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: package
+  value:
+    plugin_unique_identifier: rencongcong/clawx:0.1.4@9a5075fdae12c6cadfafe08d4ae8abe96782a79ee6ec7ca6495dcbb525ac6dcb
+    version: null
+kind: app
+version: 0.5.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+      - id: start-myclaw
+        source: start
+        sourceHandle: source
+        target: myclaw
+        targetHandle: target
+        type: custom
+      - id: myclaw-answer
+        source: myclaw
+        sourceHandle: source
+        target: answer
+        targetHandle: target
+        type: custom
+    nodes:
+      - id: start
+        data:
+          desc: ''
+          selected: false
+          title: 开始
+          type: start
+          variables:
+            - label: 查询语句
+              max_length: 48000
+              options: []
+              required: true
+              type: text-input
+              variable: query
+        position:
+          x: 80
+          y: 300
+        positionAbsolute:
+          x: 80
+          y: 300
+        selected: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - id: myclaw
+        data:
+          desc: ''
+          plugin_id: rencongcong/clawx
+          plugin_unique_identifier: rencongcong/clawx:0.1.4@9a5075fdae12c6cadfafe08d4ae8abe96782a79ee6ec7ca6495dcbb525ac6dcb
+          provider_id: rencongcong/clawx/my_claw
+          provider_name: rencongcong/clawx/my_claw
+          provider_type: builtin
+          selected: false
+          title: my_claw
+          tool_label: my_claw
+          tool_name: my_claw
+          tool_node_version: '2'
+          tool_configurations:
+            model:
+              type: constant
+              value:
+                completion_params:
+                  stop: []
+                  temperature: 0.3
+                mode: chat
+                model: 金控-Qwen3.5-35B-A3B
+                model_type: llm
+                provider: langgenius/openai_api_compatible/openai_api_compatible
+            timeout_seconds:
+              type: constant
+              value: 300
+            show_usage_text:
+              type: constant
+              value: false
+          tool_parameters:
+            query:
+              type: variable
+              value:
+                - 用户输入
+                - query
+          type: tool
+        position:
+          x: 380
+          y: 300
+        positionAbsolute:
+          x: 380
+          y: 300
+        selected: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+      - id: answer
+        data:
+          answer: '{{#myclaw.text#}}'
+          desc: ''
+          selected: false
+          title: 直接回复
+          type: answer
+          variables: []
+        position:
+          x: 680
+          y: 300
+        positionAbsolute:
+          x: 680
+          y: 300
+        selected: false
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+  hooks: []

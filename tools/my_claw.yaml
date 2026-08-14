@@ -1,0 +1,152 @@
+identity:
+  name: "my_claw"
+  author: "qiqikuaidianpao"
+  label:
+    en_US: "my_claw"
+    zh_Hans: "my_claw"
+    pt_BR: "my_claw"
+    ja_JP: "my_claw"
+description:
+  human:
+    en_US: "Skill-driven agent with progressive disclosure, cross-session memory and hot-swappable skill packs."
+    zh_Hans: "技能渐进式披露 + 跨会话记忆 + 技能热插拔的智能体。"
+    pt_BR: "Skill-driven agent with progressive disclosure and hot-swappable skill packs."
+    ja_JP: "スキル駆動型エージェント。スキルの段階的開示とホットスワップに対応。"
+  llm: "Skill-driven agent. Point it at a task; it loads matching skill packs, executes tools and delivers files."
+parameters:
+  - name: query
+    type: string
+    required: true
+    label:
+      en_US: Query
+      zh_Hans: 用户问题
+      pt_BR: Query
+      ja_JP: クエリ
+    human_description:
+      en_US: "The user's task for the agent."
+      zh_Hans: "用户的任务输入。"
+      pt_BR: "The user's task for the agent."
+      ja_JP: "エージェントへのタスク入力。"
+    llm_description: "The user's task for the agent."
+    form: llm
+  - name: files
+    type: files
+    required: false
+    label:
+      en_US: Uploaded files
+      zh_Hans: 上传文件
+      pt_BR: Uploaded files
+      ja_JP: アップロードファイル
+    human_description:
+      en_US: "Files the agent may use (saved to workspace/uploads)."
+      zh_Hans: "智能体可使用的上传文件（保存到工作区 uploads/）。"
+      pt_BR: "Files the agent may use."
+      ja_JP: "エージェントが利用するファイル。"
+    llm_description: "Files the agent may use (saved to workspace/uploads)."
+    form: llm
+  - name: model
+    type: model-selector
+    scope: llm
+    required: true
+    label:
+      en_US: Model
+      zh_Hans: 大模型
+      pt_BR: Model
+      ja_JP: モデル
+    human_description:
+      en_US: "LLM used by the agent loop."
+      zh_Hans: "智能体循环使用的模型。"
+      pt_BR: "LLM used by the agent loop."
+      ja_JP: "エージェントループで使用するモデル。"
+    form: form
+  - name: timeout_seconds
+    type: number
+    required: false
+    default: 600
+    label:
+      en_US: Timeout (seconds)
+      zh_Hans: 超时（秒）
+      pt_BR: Timeout (seconds)
+      ja_JP: タイムアウト（秒）
+    human_description:
+      en_US: "Max seconds the agent may run before stopping."
+      zh_Hans: "智能体最长运行秒数，超时自动停止。"
+      pt_BR: "Max seconds the agent may run."
+      ja_JP: "エージェントの最大実行秒数。"
+    form: form
+  - name: skills_root
+    type: string
+    required: false
+    label:
+      en_US: Skills directory
+      zh_Hans: 技能目录
+      pt_BR: Skills directory
+      ja_JP: スキルディレクトリ
+    human_description:
+      en_US: "Optional override of the skill packs directory."
+      zh_Hans: "可选，技能包目录覆盖。"
+      pt_BR: "Optional skill packs directory override."
+      ja_JP: "スキルパッケージディレクトリの上書き（任意）。"
+    form: form
+  - name: system_prompt
+    type: string
+    required: false
+    label:
+      en_US: Extra instructions
+      zh_Hans: 附加指令
+      pt_BR: Extra instructions
+      ja_JP: 追加指示
+    human_description:
+      en_US: "Additional user instructions appended to the system prompt."
+      zh_Hans: "追加到系统提示词的自定义指令。"
+      pt_BR: "Additional instructions appended to the system prompt."
+      ja_JP: "システムプロンプトに追記するカスタム指示。"
+    form: form
+  - name: memory_turns
+    type: number
+    required: false
+    default: 12
+    label:
+      en_US: Memory turns
+      zh_Hans: 记忆轮数
+      pt_BR: Memory turns
+      ja_JP: メモリターン数
+    human_description:
+      en_US: "Recent turns replayed from conversation history."
+      zh_Hans: "从会话历史回放的最大轮数。"
+      pt_BR: "Recent turns replayed."
+      ja_JP: "再生する最近のターン数。"
+    form: form
+  - name: compaction_max_prompt_tokens
+    type: number
+    required: false
+    default: 12000
+    label:
+      en_US: Context budget (tokens)
+      zh_Hans: 上下文预算（token）
+      pt_BR: Context budget (tokens)
+      ja_JP: コンテキスト予算（トークン）
+    human_description:
+      en_US: "Prompt token budget before compaction kicks in."
+      zh_Hans: "触发上下文压缩的token预算。"
+      pt_BR: "Prompt token budget."
+      ja_JP: "圧縮を発動するトークン予算。"
+    form: form
+  - name: show_usage_text
+    type: boolean
+    required: false
+    default: false
+    label:
+      en_US: Show usage text
+      zh_Hans: 显示用量文本
+      pt_BR: Show usage text
+      ja_JP: 使用量テキストを表示
+    human_description:
+      en_US: "Append a token/cost usage summary to the reply."
+      zh_Hans: "在回复末尾附加 token/费用用量摘要。"
+      pt_BR: "Append a usage summary to the reply."
+      ja_JP: "返信に使用量サマリーを追加。"
+    form: form
+extra:
+  python:
+    source: tools/my_claw_tool.py

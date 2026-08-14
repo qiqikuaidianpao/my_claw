@@ -1,0 +1,22 @@
+my_claw
+Copyright 2026 my_claw contributors
+
+This product includes software developed as a fork and modernization of
+mini_claw (https://github.com/lfenghx/mini_claw), version 1.2.0,
+commit ccbe15b381e39147388124b651d09c2996f49da7,
+Copyright lfenghx, licensed under the Apache License, Version 2.0.
+
+Secondary development and re-release is authorized by the original author.
+The following modules originated from mini_claw and have been refactored:
+  - command execution policy and security gate
+  - SSRF-protected web fetching
+  - skills snapshot and dependency validation
+  - usage accounting
+  - prompt message helpers and streaming round buffering
+  (see docs/PROVENANCE.md for the detailed per-module lineage)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0

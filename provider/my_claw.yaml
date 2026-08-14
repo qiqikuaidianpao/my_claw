@@ -1,0 +1,19 @@
+identity:
+  author: qiqikuaidianpao
+  name: my_claw
+  label:
+    en_US: my_claw
+    zh_Hans: my_claw
+  description:
+    en_US: Skill-driven agent with progressive disclosure, cross-session memory and hot-swappable skill packs.
+    zh_Hans: 技能渐进式披露 + 跨会话记忆 + 技能热插拔的智能体。
+  icon: icon.svg
+  tags:
+    - productivity
+    - utilities
+tools:
+  - tools/my_claw.yaml
+  - tools/skill_manager.yaml
+extra:
+  python:
+    source: provider/my_claw.py

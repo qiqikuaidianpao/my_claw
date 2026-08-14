@@ -1,0 +1,65 @@
+identity:
+  name: "skill_manager"
+  author: "qiqikuaidianpao"
+  label:
+    en_US: "Skill Manager"
+    zh_Hans: "技能管理"
+    pt_BR: "Skill Manager"
+    ja_JP: "スキル管理"
+description:
+  human:
+    en_US: "Manage my_claw skill packs (list / install / remove / download)."
+    zh_Hans: "管理 my_claw 技能包（查看/安装/删除/导出）。"
+    pt_BR: "Manage my_claw skill packs."
+    ja_JP: "my_claw のスキルパッケージを管理。"
+  llm: "Manage my_claw skill packs: list installed packs, install an uploaded zip, remove or export a pack by index."
+parameters:
+  - name: action
+    type: string
+    required: true
+    default: list
+    label:
+      en_US: Action
+      zh_Hans: 操作
+      pt_BR: Action
+      ja_JP: 操作
+    human_description:
+      en_US: "Which management action to perform."
+      zh_Hans: "要执行的管理操作。"
+      pt_BR: "Which management action to perform."
+      ja_JP: "実行する管理操作。"
+    llm_description: "Management action, one of: list, install, remove, download."
+    form: llm
+  - name: index
+    type: number
+    required: false
+    label:
+      en_US: Skill index
+      zh_Hans: 技能序号
+      pt_BR: Skill index
+      ja_JP: スキル番号
+    human_description:
+      en_US: "1-based index from the list output (for remove/download)."
+      zh_Hans: "列表输出的1基序号（删除/导出时使用）。"
+      pt_BR: "1-based index from the list output."
+      ja_JP: "リスト出力の1始まりの番号。"
+    llm_description: "1-based index from the list output, used by remove/download."
+    form: llm
+  - name: files
+    type: files
+    required: false
+    label:
+      en_US: Skill pack zip
+      zh_Hans: 技能包zip
+      pt_BR: Skill pack zip
+      ja_JP: スキルパッケージzip
+    human_description:
+      en_US: "Skill package to install (action=install)."
+      zh_Hans: "待安装的技能包（action=install 时）。"
+      pt_BR: "Skill package to install."
+      ja_JP: "インストールするスキルパッケージ。"
+    llm_description: "Skill package zip to install (action=install)."
+    form: llm
+extra:
+  python:
+    source: tools/skill_manager_tool.py
