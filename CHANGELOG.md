@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0（2026-08-14，特色功能补齐）
+
+补齐原 mini_claw 的三项标志性能力，赶在 marketplace 审核合并前：
+
+- **人格引导（onboarding）**：首用问称呼→写入 USER.md/IDENTITY.md；"重置人格"清空重来。两段式状态机，可跳过（skip_onboarding 参数）
+- **执行审批（exec approval）**：敏感命令（curl/pip/npm/git 等白名单外）挂起等待用户裁决——回复 1=本次允许 / 2=总是允许（按命令名持久授权）/ 3=拒绝；挂起状态跨调用保存在插件存储
+- **新增三个内置工具**：
+  - `web_fetch`：SSRF 防护的网页抓取（模型可直接联网查资料）
+  - `update_persona`：模型自主沉淀长期记忆/用户画像到四文档人格
+  - `run_skill_command`：在技能目录内规范执行脚本（解释器统一解析）+ 产物自动收割到工作区 skill_outputs/（替代此前"复制脚本到工作区"的绕行）
+- 测试增至 59 项（新增 onboarding/审批状态机/新工具用例）
+
 ## 0.4.0（2026-08-14，发布候选）
 
 首个完整功能版。基于 mini_claw v1.2.0（commit ccbe15b，Apache-2.0，经原作者授权）的架构级重构。

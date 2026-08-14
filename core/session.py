@@ -89,8 +89,9 @@ class SessionContext:
     # loop safety
     loop_guard: LoopGuard = field(default_factory=LoopGuard)
 
-    # misc counters
+    # misc counters / extension bag (persona, approval hooks...)
     empty_responses: int = 0
+    extra: dict[str, Any] = field(default_factory=dict)
     rounds: list[LLMRound] = field(default_factory=list)
 
     @property

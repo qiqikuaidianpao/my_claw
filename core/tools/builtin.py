@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from typing import Any
 
 from core.security import exec_policy
@@ -99,6 +100,8 @@ def export_file(ctx: SessionContext, emitter, path: str) -> ToolResult:
 
 # ── command execution ───────────────────────────────────────────────────
 
+SENSITIVE_BINS = {"curl", "wget", "pip", "pip3", "npm", "npx", "node", "git", "tar", "unzip", "ssh", "scp"}
+
 
 @tool(
     "run_command",
@@ -120,6 +123,14 @@ def run_command(ctx: SessionContext, emitter, command: list[str], timeout: int =
     )
     if not verdict.get("ok"):
         return _ok({"error": verdict.get("error", "exec_denied"), "detail": verdict.get("detail") or verdict.get("error", ""), "hint": verdict.get("hint", "")})
+    # 审批闸：敏感命令且开关开启时，经宿主注入的approval_check裁决
+    approval_check = (ctx.extra or {}).get("approval_check")
+    if approval_check is not None and str(verdict.get("exe", "")).lower() in SENSITIVE_BINS:
+        decision = approval_check(verdict["argv"], timeout)
+        if decision == "pending":
+            return _ok({"approval_required": True, "command": verdict["argv"]})
+        if decision == "denied":
+            return _ok({"error": "exec_denied_by_user"})
     try:
         proc = subprocess.run(
             verdict["argv"],
@@ -153,6 +164,117 @@ def list_skills(ctx: SessionContext, emitter) -> ToolResult:
     from core.skills.packages import list_installed
 
     return _ok({"skills": list_installed(ctx.skills_root)})
+
+
+@tool(
+    "web_fetch",
+    description="Fetch a public web page and return readable markdown/text (SSRF-guarded).",
+    parameters={
+        "type": "object",
+        "properties": {"url": {"type": "string"}, "max_chars": {"type": "integer", "default": 20000}},
+    },
+    required=("url",),
+    progress="🌐 正在抓取网页：{url}…",
+)
+def web_fetch(ctx: SessionContext, emitter, url: str, max_chars: int = 20000) -> ToolResult:
+    from core.security.web_fetch import web_fetch as _fetch
+
+    result = _fetch(url=url, max_chars=max_chars)
+    return _ok(result)
+
+
+@tool(
+    "update_persona",
+    description="Persist durable facts about the user or yourself into long-term persona memory.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "user_profile": {"type": "string", "description": "facts about the user, one per line"},
+            "identity": {"type": "string", "description": "your own name/style updates"},
+            "memory_items": {"type": "array", "items": {"type": "string"}, "description": "long-term memory bullets"},
+        },
+    },
+)
+def update_persona(ctx: SessionContext, emitter, user_profile: str = "", identity: str = "", memory_items: list[str] | None = None) -> ToolResult:
+    persona = (ctx.extra or {}).get("persona")
+    if persona is None:
+        return _ok({"error": "persona_unavailable"})
+    written: list[str] = []
+    if user_profile:
+        persona.write("USER.md", (persona.read("USER.md").rstrip() + "\n" + user_profile.strip()).strip())
+        written.append("USER.md")
+    if identity:
+        persona.write("IDENTITY.md", (persona.read("IDENTITY.md").rstrip() + "\n" + identity.strip()).strip())
+        written.append("IDENTITY.md")
+    if memory_items:
+        persona.merge_managed({"facts": [str(x) for x in memory_items]})
+        written.append("MEMORY.md")
+    return _ok({"updated": written})
+
+
+@tool(
+    "run_skill_command",
+    description="Run a skill's script inside its own directory (interpreter-resolved for python) and collect produced files.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "skill_name": {"type": "string"},
+            "command": {"type": "array", "items": {"type": "string"}},
+            "timeout": {"type": "integer", "default": 120},
+        },
+    },
+    required=("skill_name", "command"),
+    progress="⚙️ 正在执行技能《{skill_name}》命令…",
+)
+def run_skill_command(ctx: SessionContext, emitter, skill_name: str, command: list[str], timeout: int = _CMD_TIMEOUT) -> ToolResult:
+    if not isinstance(command, list) or not command:
+        return _ok({"error": "invalid_command"})
+    if not ctx.skills_root:
+        return _ok({"error": "no_skills_root"})
+    skill_dir = safe_join(ctx.skills_root, skill_name)
+    if not os.path.isdir(skill_dir):
+        return _ok({"error": "skill_not_found", "skill": skill_name})
+    argv = [str(c) for c in command]
+    # python家族统一换成运行时解释器（安全闸只认解释器路径）
+    if argv[0].lower() in ("python", "python3", "python3.10", "python3.11", "python3.12"):
+        argv = [sys.executable] + argv[1:]
+    verdict = exec_policy.resolve_and_validate_exec(
+        command=argv,
+        session_dir=ctx.workspace_root or os.getcwd(),
+        skills_root=None,  # 解释器在系统路径，不再按skills_root拦截
+    )
+    if not verdict.get("ok"):
+        return _ok({"error": verdict.get("error", "exec_denied"), "detail": verdict.get("detail") or ""})
+    before = {e["relative_path"] for e in list_dir(skill_dir, max_depth=3) if e["type"] == "file"}
+    try:
+        proc = subprocess.run(
+            verdict["argv"], cwd=skill_dir, capture_output=True, text=True,
+            timeout=max(1, min(int(timeout), _CMD_TIMEOUT)),
+        )
+    except subprocess.TimeoutExpired:
+        return _ok({"error": "timeout"})
+    except Exception as e:
+        return _ok({"error": "exec_failed", "detail": str(e)})
+    # 收割技能目录内新产物到工作区
+    collected: list[str] = []
+    out_dir = os.path.join(ctx.workspace_root or os.getcwd(), "skill_outputs")
+    os.makedirs(out_dir, exist_ok=True)
+    import shutil as _shutil
+
+    for e in list_dir(skill_dir, max_depth=3):
+        if e["type"] == "file" and e["relative_path"] not in before:
+            dest = os.path.join(out_dir, os.path.basename(e["path"]))
+            try:
+                _shutil.copy2(e["path"], dest)
+                collected.append(f"skill_outputs/{os.path.basename(e['path'])}")
+            except Exception:
+                pass
+    return _ok({
+        "code": proc.returncode,
+        "stdout": shorten_text(proc.stdout, _MAX_CMD_OUTPUT),
+        "stderr": shorten_text(proc.stderr, 4000) if proc.stderr.strip() else "",
+        "collected_files": collected[:20],
+    })
 
 
 @tool(

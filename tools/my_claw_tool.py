@@ -63,6 +63,18 @@ class MyClawTool(Tool):
         memory = MemoryService(kv, app_id=app_id, user_id=user_id)
         history = HistoryStore(kv, conversation_id=conversation_id)
 
+        # ── 前置阶段1：执行审批应答（上一轮挂起的敏感命令） ──
+        if str(tool_parameters.get("exec_approval_enabled") or "").lower() in ("true", "1", "yes"):
+            handled = yield from self._approval_phase(kv, query, user_id, app_id, conversation_id)
+            if handled:
+                return
+
+        # ── 前置阶段2：人格引导（首用问称呼；"重置人格"清空） ──
+        if str(tool_parameters.get("skip_onboarding") or "").lower() not in ("true", "1", "yes"):
+            handled = yield from self._onboarding_phase(kv, persona, query)
+            if handled:
+                return
+
         # persisted session workspace per conversation
         session_dir = self._session_dir(kv, conversation_id)
         ws = Workspace(session_dir)
@@ -101,6 +113,10 @@ class MyClawTool(Tool):
             except Exception as e:
                 log.warning("upload_save_failed", detail=str(e))
 
+        ctx.extra["persona"] = persona
+        if str(tool_parameters.get("exec_approval_enabled") or "").lower() in ("true", "1", "yes"):
+            ctx.extra["approval_check"] = self._make_approval_check(kv, query, user_id, app_id, conversation_id)
+
         compactor = ContextManager(
             llm=llm,
             persona_merge=persona.merge_managed,
@@ -128,6 +144,108 @@ class MyClawTool(Tool):
             yield self.create_text_message(usage.format_text(usage_payload))
 
     # ── helpers ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _approval_keys(kv: DifyKVStorage, user_id: str, app_id: str, conversation_id: str) -> tuple[str, str]:
+        pending_key = f"claw:approval:{conversation_id or 'anonymous'}:pending"
+        grants_key = f"claw:approval:{app_id}:user:{user_id or 'global'}:grants"
+        return pending_key, grants_key
+
+    def _make_approval_check(self, kv: DifyKVStorage, query: str, user_id: str, app_id: str, conversation_id: str):
+        def check(argv: list[str], timeout: int) -> str:
+            import json as _json
+
+            pending_key, grants_key = self._approval_keys(kv, user_id, app_id, conversation_id)
+            raw = kv.get(grants_key)
+            grants = []
+            if raw:
+                try:
+                    grants = _json.loads(raw.decode("utf-8", errors="ignore"))
+                except Exception:
+                    grants = []
+            exe = (argv[0].rsplit("/", 1)[-1] or "").rsplit(chr(92), 1)[-1].lower()
+            if exe in grants:
+                return "allowed"
+            kv.set(pending_key, _json.dumps({"argv": argv, "timeout": timeout}, ensure_ascii=False).encode("utf-8"))
+            return "pending"
+
+        return check
+
+    def _approval_phase(self, kv: DifyKVStorage, query: str, user_id: str, app_id: str, conversation_id: str):
+        """用户回复 1/2/3（或 允许/总是/拒绝）时裁决挂起的敏感命令。"""
+        import json as _json
+        import subprocess as _sp
+
+        pending_key, grants_key = self._approval_keys(kv, user_id, app_id, conversation_id)
+        raw = kv.get(pending_key)
+        if not raw:
+            return False
+        try:
+            pending = _json.loads(raw.decode("utf-8", errors="ignore"))
+        except Exception:
+            kv.set(pending_key, b"")
+            return False
+        q = query.strip()
+        verdict = None
+        if q in ("1", "1.", "允许", "本次允许", "yes"):
+            verdict = "once"
+        elif q in ("2", "2.", "总是允许", "always"):
+            verdict = "always"
+        elif q in ("3", "3.", "拒绝", "deny", "no"):
+            verdict = "deny"
+        if verdict is None:
+            # 无关输入：保留挂起并提示
+            yield self.create_text_message("⏳有一条命令等待审批：" + " ".join(pending.get("argv", [])) + "\n回复 1=本次允许 2=总是允许 3=拒绝")
+            return True
+        kv.set(pending_key, b"")
+        if verdict == "deny":
+            yield self.create_text_message("已拒绝执行该命令。如需其他帮助请继续说。")
+            return True
+        if verdict == "always":
+            exe = (pending["argv"][0].rsplit("/", 1)[-1] or "").rsplit(chr(92), 1)[-1].lower()
+            raw_g = kv.get(grants_key)
+            grants = []
+            if raw_g:
+                try:
+                    grants = _json.loads(raw_g.decode("utf-8", errors="ignore"))
+                except Exception:
+                    grants = []
+            if exe not in grants:
+                grants.append(exe)
+            kv.set(grants_key, _json.dumps(grants).encode("utf-8"))
+        try:
+            proc = _sp.run(pending["argv"], capture_output=True, text=True, timeout=min(int(pending.get("timeout") or 120), 300))
+            out = (proc.stdout or "")[-3000:]
+            err = (proc.stderr or "")[-1000:]
+            yield self.create_text_message("✅已按审批执行：" + " ".join(pending["argv"]) + "\n退出码 " + str(proc.returncode) + "\n" + (out or err or "(无输出)"))
+        except Exception as e:
+            yield self.create_text_message("❌审批后执行失败：" + str(e))
+        return True
+
+    def _onboarding_phase(self, kv: DifyKVStorage, persona: PersonaStore, query: str):
+        """两段式人格引导：首用问称呼，次轮落档并继续正常任务。"""
+        stage_key = "claw:onboarding:stage"
+        raw = kv.get(stage_key)
+        stage = raw.decode("utf-8", errors="ignore").strip() if raw else ""
+        if "重置人格" in query or "reset persona" in query.lower():
+            persona.reset()
+            kv.set(stage_key, b"0")
+            yield self.create_text_message("已清空人格与记忆，重新开始。请问怎么称呼你？")
+            return True
+        user_doc = persona.read("USER.md").strip()
+        if stage == "1" and not user_doc and len(query.strip()) <= 16:
+            name = query.strip().strip("，。！! ")
+            persona.write("USER.md", "称呼：" + name)
+            persona.write("IDENTITY.md", "# 身份\nmy_claw，" + name + "的智能办公助手。可靠、简洁、执行导向。")
+            kv.set(stage_key, b"done")
+            yield self.create_text_message("好的，" + name + "！我已记住你的称呼，随时吩咐任务。")
+            return True
+        if not user_doc and stage != "1":
+            kv.set(stage_key, b"1")
+            yield self.create_text_message("你好，我是 my_claw 🦞 首次见面——请问怎么称呼你？（回复称呼后我们直接开工）")
+            return True
+        return False
+
 
     @staticmethod
     def _session_dir(kv: DifyKVStorage, conversation_id: str) -> str:

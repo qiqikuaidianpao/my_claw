@@ -132,6 +132,36 @@ parameters:
       pt_BR: "Prompt token budget."
       ja_JP: "圧縮を発動するトークン予算。"
     form: form
+  - name: exec_approval_enabled
+    type: boolean
+    required: false
+    default: false
+    label:
+      en_US: Exec approval
+      zh_Hans: 命令执行审批
+      pt_BR: Exec approval
+      ja_JP: 実行承認
+    human_description:
+      en_US: "Sensitive commands (curl/pip/npm/...) require user approval (1 once / 2 always / 3 deny)."
+      zh_Hans: "敏感命令（curl/pip/npm等）需用户审批（1本次允许/2总是允许/3拒绝）。"
+      pt_BR: "Sensitive commands require approval."
+      ja_JP: "機密コマンドには承認が必要。"
+    form: form
+  - name: skip_onboarding
+    type: boolean
+    required: false
+    default: false
+    label:
+      en_US: Skip onboarding
+      zh_Hans: 跳过首次引导
+      pt_BR: Skip onboarding
+      ja_JP: オンボーディングをスキップ
+    human_description:
+      en_US: "Disable the first-use persona onboarding questions."
+      zh_Hans: "关闭首次使用时的人格引导提问。"
+      pt_BR: "Disable first-use onboarding."
+      ja_JP: "初回オンボーディングを無効化。"
+    form: form
   - name: show_usage_text
     type: boolean
     required: false
