@@ -116,21 +116,25 @@ SENSITIVE_BINS = {"curl", "wget", "pip", "pip3", "npm", "npx", "node", "git", "t
 def run_command(ctx: SessionContext, emitter, command: list[str], timeout: int = _CMD_TIMEOUT) -> ToolResult:
     if not isinstance(command, list) or not command:
         return _ok({"error": "invalid_command", "detail": "command must be a non-empty argv array"})
+    approval_check = (ctx.extra or {}).get("approval_check")
+    raw_exe = str(command[0] or "").strip().lower()
     verdict = exec_policy.resolve_and_validate_exec(
         command=[str(c) for c in command],
         session_dir=ctx.workspace_root or os.getcwd(),
         skills_root=ctx.skills_root or None,
     )
-    if not verdict.get("ok"):
-        return _ok({"error": verdict.get("error", "exec_denied"), "detail": verdict.get("detail") or verdict.get("error", ""), "hint": verdict.get("hint", "")})
-    # 审批闸：敏感命令且开关开启时，经宿主注入的approval_check裁决
-    approval_check = (ctx.extra or {}).get("approval_check")
-    if approval_check is not None and str(verdict.get("exe", "")).lower() in SENSITIVE_BINS:
-        decision = approval_check(verdict["argv"], timeout)
+    # 审批闸优先于白名单：开启审批时，敏感命令交用户裁决而非直接拒绝
+    if approval_check is not None and raw_exe in SENSITIVE_BINS:
+        decision = approval_check([str(c) for c in command], timeout)
         if decision == "pending":
-            return _ok({"approval_required": True, "command": verdict["argv"]})
+            return _ok({"approval_required": True, "command": [str(c) for c in command]})
         if decision == "denied":
             return _ok({"error": "exec_denied_by_user"})
+        if not verdict.get("ok"):
+            # 用户已放行：以原始命令执行（白名单为其让路）
+            verdict = {"ok": True, "argv": [str(c) for c in command]}
+    if not verdict.get("ok"):
+        return _ok({"error": verdict.get("error", "exec_denied"), "detail": verdict.get("detail") or verdict.get("error", ""), "hint": verdict.get("hint", "")})
     try:
         proc = subprocess.run(
             verdict["argv"],
