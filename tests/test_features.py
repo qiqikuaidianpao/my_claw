@@ -180,5 +180,42 @@ class TestApproval(unittest.TestCase):
         self.assertEqual(check(["curl", "https://x"], 30), "allowed")
 
 
+class TestApprovalShortCircuit(unittest.TestCase):
+    def test_kernel_short_circuits_on_approval_required(self):
+        """审批短路：工具返回approval_required时，内核直接向用户挂起并终止。"""
+        from core.kernel import AgentKernel
+        from core.llm import LLMRound
+        from core.session import SessionContext
+        from core.tools import registry as reg
+
+        reg.clear()
+
+        @reg.tool("sensitive", description="s", parameters={"type": "object", "properties": {}})
+        def sensitive(ctx, emitter, **kw):
+            return reg.ToolResult(content='{"approval_required": true, "command": ["curl", "x"]}')
+
+        emitted: list[str] = []
+
+        class E:
+            def text(self, chunk):
+                emitted.append(chunk)
+
+            def blob(self, *a, **k):
+                pass
+
+            def variable(self, *a, **k):
+                pass
+
+        round1 = LLMRound(tool_calls=({"id": "c1", "function": {"name": "sensitive", "arguments": "{}"}},))
+        llm = type("L", (), {"invoke_round": staticmethod(lambda **kw: round1), "invoke_text": staticmethod(lambda **kw: "")})()
+        ctx = SessionContext(session_id="s", messages=[{"role": "user", "content": "q"}])
+        AgentKernel(llm=llm, emitter=E()).run(ctx)
+        joined = "".join(emitted)
+        self.assertIn("需要你审批", joined)
+        self.assertIn("1=本次允许", joined)
+        self.assertTrue(ctx.final_text_emitted)
+        self.assertEqual(len(ctx.rounds), 1)  # 审批短路后不再进入下一轮
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

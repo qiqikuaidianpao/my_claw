@@ -30,8 +30,10 @@ class MyClawTool(Tool):
         pending: list[ToolInvokeMessage] = []
         emitter = DifyMessageEmitter(self, pending.append)
         try:
-            for _ in self._run(tool_parameters, emitter, pending):
-                while pending:
+            for msg in self._run(tool_parameters, emitter, pending):
+                if msg is not None:  # _run直接产出的消息（onboarding/审批/错误）
+                    yield msg
+                while pending:  # emitter缓冲的消息（agent正文/进度）
                     yield pending.pop(0)
         except Exception as e:
             log.error("tool_run_crashed", detail=str(e))

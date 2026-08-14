@@ -128,6 +128,17 @@ class AgentKernel:
 
             try:
                 result = self.tool_executor(spec, args, ctx, self.emitter)
+                # 审批短路：工具要求人工审批时，直接向用户挂起并结束本轮
+                if '"approval_required": true' in result.content:
+                    ctx.final_text = (
+                        "🔐 该命令需要你审批后才会执行：\n"
+                        + self._tool_call_plain(tc)["function"]["arguments"]
+                        + "\n\n回复 1=本次允许  2=总是允许  3=拒绝"
+                    )
+                    self._feed_tool_result(ctx, call_id, name, {"error": "awaiting_user_approval"})
+                    self._emit_text(ctx.final_text)
+                    ctx.final_text_emitted = True
+                    break
                 digest = shorten_text(result.content, 120)
                 warned, stop = ctx.loop_guard.observe(sig, digest)
                 if stop:
