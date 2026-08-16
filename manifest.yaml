@@ -14,6 +14,8 @@ description:
   pt_BR: "Um agente orientado a habilidades com divulgação progressiva, memória entre sessões e pacotes de habilidades substituíveis em tempo real. Fork modernizado do mini_claw."
 icon: icon.svg
 icon_dark: icon.svg
+repo: https://github.com/qiqikuaidianpao/my_claw
+contact: rencongcong@cr-leasing.com.cn
 resource:
   memory: 268435456
   permission:
