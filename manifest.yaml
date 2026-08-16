@@ -1,4 +1,4 @@
-version: 0.5.3
+version: 0.5.4
 type: plugin
 author: qiqikuaidianpao
 name: my_claw
@@ -40,7 +40,7 @@ plugins:
   tools:
     - provider/my_claw.yaml
 meta:
-  version: 0.5.3
+  version: 0.5.4
   arch:
     - amd64
     - arm64

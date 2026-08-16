@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.4（2026-08-17，技能列表展示优化）
+
+- 「查看技能」输出增加技能介绍：`list_installed` 透出 `description`，列表渲染在技能名/版本/状态下一行展示介绍，并汇总"共 N 个、M 个可用"与操作提示
+- 五个官方技能包（office / rental-calc / chart / schedule / feishu-msg）的 SKILL.md 描述本地化为中文在前、英文括注的双语格式
+
 ## 0.5.3（2026-08-16，技能管理路由修复）
 
 - 收紧 `my_claw` 的技能管理前置路由：仅查看、新增、删除、下载、依赖安装等明确管理意图进入 `skill_manager`

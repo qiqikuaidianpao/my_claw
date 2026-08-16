@@ -67,7 +67,8 @@ class SkillManagerTool(Tool):
         if not skills:
             yield self.create_text_message("当前没有已安装的技能包。")
             return
-        lines = ["👓当前技能列表：", ""]
+        usable = sum(1 for s in skills if s.get("eligible"))
+        lines = [f"👓 当前技能列表（共 {len(skills)} 个，{usable} 个可用）：", ""]
         for i, s in enumerate(skills, 1):
             if s.get("invalid_reason") and not s.get("version"):
                 lines.append(f"{i}. {s['name']} 🔴无效（{s['invalid_reason']}）")
@@ -79,6 +80,12 @@ class SkillManagerTool(Tool):
                     extra.append(f"{k}={','.join(s[k][:4])}")
             note = f"（缺：{'；'.join(extra)}）" if extra else ""
             lines.append(f"{i}. {s['name']} v{s.get('version', '0')} {icon}{note}")
+            desc = (s.get("description") or "").strip()
+            if desc:
+                one_line = desc.splitlines()[0]
+                lines.append(f"   {one_line[:90]}")
+        lines.append("")
+        lines.append("💡 直接说需求即可自动调用对应技能；新增/删除/下载技能、依赖安装请直接吩咐。")
         yield self.create_text_message("\n".join(lines))
 
     def _install(self, skills_root: str, files: Any) -> Generator[ToolInvokeMessage, None, None]:

@@ -120,6 +120,7 @@ class TestListInstalled(unittest.TestCase):
             names = [r["name"] for r in result]
             self.assertEqual(names, ["alpha", "broken"])
             self.assertIn("eligible", result[0])
+            self.assertEqual(result[0]["description"], "Rental repayment schedule calculator.")
             self.assertTrue(result[1]["invalid_reason"])
 
     def test_empty_root(self):

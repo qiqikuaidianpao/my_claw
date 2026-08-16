@@ -154,6 +154,7 @@ def list_installed(skills_root: str) -> list[dict[str, Any]]:
         payload = status.model_dump()
         payload["name"] = name
         payload["manifest_name"] = manifest.name
+        payload["description"] = manifest.description
         out.append(payload)
     return out
 
