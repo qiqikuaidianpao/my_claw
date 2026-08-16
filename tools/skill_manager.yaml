@@ -8,11 +8,11 @@ identity:
     ja_JP: "スキル管理"
 description:
   human:
-    en_US: "Manage my_claw skill packs (list / install / remove / download)."
-    zh_Hans: "管理 my_claw 技能包（查看/安装/删除/导出）。"
+    en_US: "Manage my_claw skill packs (list / install / remove / download / dependencies)."
+    zh_Hans: "管理 my_claw 技能包（查看/安装/删除/导出/依赖安装）。"
     pt_BR: "Manage my_claw skill packs."
     ja_JP: "my_claw のスキルパッケージを管理。"
-  llm: "Manage my_claw skill packs: list installed packs, install an uploaded zip, remove or export a pack by index."
+  llm: "Use only for explicit skill-pack management: list installed packs, install an uploaded zip, remove or export a pack by index, or install dependencies."
 parameters:
   - name: action
     type: string
@@ -28,7 +28,7 @@ parameters:
       zh_Hans: "要执行的管理操作。"
       pt_BR: "Which management action to perform."
       ja_JP: "実行する管理操作。"
-    llm_description: "Management action, one of: list, install, remove, download."
+    llm_description: "Management action, one of: list, install, remove, download, dependencies."
     form: llm
   - name: index
     type: number

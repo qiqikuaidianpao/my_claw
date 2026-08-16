@@ -16,6 +16,7 @@ from core.memory.persona import PersonaStore
 from core.memory.service import MemoryService
 from core.prompt import build_system_prompt
 from core.session import SessionContext
+from core.skills.commands import parse_skill_management_command
 from core.usage import LLMUsageAccumulator
 from core.util import safe_get
 from core.workspace.workspace import Workspace
@@ -54,6 +55,22 @@ class MyClawTool(Tool):
 
         if not query:
             yield self.create_text_message("❌缺少 query 参数")
+            return
+
+        management_command = self._skill_management_command(query)
+        if management_command is not None:
+            from tools.skill_manager_tool import SkillManagerTool
+
+            action, index = management_command
+            manager = SkillManagerTool(self.runtime, self.session)
+            yield from manager._invoke(
+                {
+                    "action": action,
+                    "index": index,
+                    "files": tool_parameters.get("files"),
+                    "skills_root": skills_root,
+                }
+            )
             return
 
         kv = DifyKVStorage(self.session)
@@ -146,6 +163,10 @@ class MyClawTool(Tool):
             yield self.create_text_message(usage.format_text(usage_payload))
 
     # ── helpers ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _skill_management_command(query: str) -> tuple[str, int] | None:
+        return parse_skill_management_command(query)
 
     @staticmethod
     def _approval_keys(kv: DifyKVStorage, user_id: str, app_id: str, conversation_id: str) -> tuple[str, str]:

@@ -7,12 +7,16 @@ field the workflow fills deterministically.
 from __future__ import annotations
 
 import os
+import re
 import shutil
+import subprocess
+import sys
 import zipfile
 from collections.abc import Generator
 from typing import Any
 
 from core import log
+from core.skills.commands import parse_skill_management_command
 from core.skills.packages import list_installed, parse_manifest
 from core.util import safe_get, shorten_text
 from dify_plugin.entities.tool import ToolInvokeMessage
@@ -27,27 +31,13 @@ class SkillManagerTool(Tool):
         查看/列出技能 → list；新增/安装技能 → install；
         删除技能N → remove N；下载/导出技能N → download N。
         """
-        import re
-
         s = raw.strip().lower()
-        if s in {"list", "install", "remove", "download"}:
-            return s, 0
-        if ("新增" in raw or "安装" in raw or "上传" in raw):
-            return "install", 0
-        if "删除" in raw or "卸载" in raw:
-            m = re.search(r"(\d+)", raw)
-            return "remove", int(m.group(1)) if m else 0
-        if "下载" in raw or "导出" in raw:
-            m = re.search(r"(\d+)", raw)
-            return "download", int(m.group(1)) if m else 0
-        if "查看" in raw or "列出" in raw or "列表" in raw or "技能" in raw:
-            return "list", 0
-        return s, 0
+        return parse_skill_management_command(raw, allow_enum=True) or (s, 0)
 
     def _invoke(self, tool_parameters: dict[str, Any]) -> Generator[ToolInvokeMessage, None, None]:
         action, index = self._parse_command(str(tool_parameters.get("action") or "list").strip())
-        if action not in {"list", "install", "remove", "download"}:
-            yield self.create_text_message("❌无法识别操作：" + action + "（支持：查看技能 / 新增技能 / 删除技能N / 下载技能N，或 list / install / remove / download）")
+        if action not in {"list", "install", "remove", "download", "dependencies"}:
+            yield self.create_text_message("❌无法识别操作：" + action + "（支持：查看技能 / 新增技能 / 删除技能N / 下载技能N / 依赖安装）")
             return
         tool_parameters["index"] = index if index else tool_parameters.get("index")
         skills_root = str(tool_parameters.get("skills_root") or "") or os.environ.get("SKILLS_ROOT") or os.path.join(
@@ -62,8 +52,10 @@ class SkillManagerTool(Tool):
                 yield from self._remove(skills_root, int(tool_parameters.get("index") or 0))
             elif action == "download":
                 yield from self._download(skills_root, int(tool_parameters.get("index") or 0))
+            elif action == "dependencies":
+                yield from self._install_dependencies(skills_root)
             else:
-                yield self.create_text_message(f"❌未知操作：{action}（支持 list / install / remove / download）")
+                yield self.create_text_message(f"❌未知操作：{action}")
         except Exception as e:
             log.error("skill_manager_failed", action=action, detail=str(e))
             yield self.create_text_message(f"❌技能管理操作失败：{e}")
@@ -146,6 +138,31 @@ class SkillManagerTool(Tool):
                 shutil.rmtree(target, ignore_errors=True)
                 raise ValueError(f"SKILL.md 校验失败：{err}")
             return os.path.basename(target)
+
+    def _install_dependencies(self, skills_root: str) -> Generator[ToolInvokeMessage, None, None]:
+        missing: list[str] = []
+        for item in list_installed(skills_root):
+            for package in item.get("missing_py") or []:
+                if re.fullmatch(r"[A-Za-z0-9._-]+", package) and package not in missing:
+                    missing.append(package)
+        if not missing:
+            yield self.create_text_message("未发现需要安装的 Python 依赖。")
+            yield from self._list(skills_root)
+            return
+
+        yield self.create_text_message("开始安装技能所需的 Python 依赖：" + ", ".join(missing))
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", *missing],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode != 0:
+            detail = shorten_text(result.stderr or result.stdout or "无错误输出", 1200)
+            yield self.create_text_message(f"❌依赖安装失败（退出码 {result.returncode}）：{detail}")
+            return
+        yield self.create_text_message("✅依赖安装完成。")
+        yield from self._list(skills_root)
 
     @staticmethod
     def _locate_skill_root(z: zipfile.ZipFile) -> str | None:

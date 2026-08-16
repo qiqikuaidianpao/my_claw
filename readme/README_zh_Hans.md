@@ -32,7 +32,7 @@ my_claw 是 [mini_claw](https://github.com/lfenghx/mini_claw) v1.2.0（Apache-2.
    把结果发到项目群
    ```
 
-技能管理（同一 Chatflow 中使用 skill manager 工具）：`查看技能` / 上传 zip + `新增技能` / `删除技能2`。
+技能管理命令也直接接入同一个 my_claw 节点：`查看技能` / 上传 zip + `新增技能` / `删除技能2` / `下载技能2` / `依赖安装`。my_claw 会先识别明确的管理意图，再转给内置 skill manager；普通任务即使含有“技能”字样也会继续执行主 agent 循环。不要在 Chatflow 中另建“包含技能”条件分支，否则会绕过该路由边界。
 
 ## 开发
 

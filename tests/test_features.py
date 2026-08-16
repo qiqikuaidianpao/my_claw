@@ -5,6 +5,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -215,6 +216,59 @@ class TestApprovalShortCircuit(unittest.TestCase):
         self.assertIn("1=本次允许", joined)
         self.assertTrue(ctx.final_text_emitted)
         self.assertEqual(len(ctx.rounds), 1)  # 审批短路后不再进入下一轮
+
+
+class TestSkillManagementRouting(unittest.TestCase):
+    def test_business_message_mentioning_skills_stays_in_agent_loop(self):
+        from tools.my_claw_tool import MyClawTool
+
+        self.assertIsNone(MyClawTool._skill_management_command("发送润工作群通知：技能热插拔功能演示中"))
+        self.assertIsNone(MyClawTool._skill_management_command("总结技能管理方案并生成汇报"))
+
+    def test_five_management_commands_are_routed(self):
+        from tools.my_claw_tool import MyClawTool
+
+        cases = {
+            "查看技能": ("list", 0),
+            "新增技能": ("install", 0),
+            "删除技能2": ("remove", 2),
+            "下载技能3": ("download", 3),
+            "依赖安装": ("dependencies", 0),
+        }
+        for query, expected in cases.items():
+            with self.subTest(query=query):
+                self.assertEqual(MyClawTool._skill_management_command(query), expected)
+
+    def test_management_word_order_variants_are_routed(self):
+        from tools.my_claw_tool import MyClawTool
+
+        self.assertEqual(MyClawTool._skill_management_command("帮我看看技能列表"), ("list", 0))
+        self.assertEqual(MyClawTool._skill_management_command("把第4个技能删除掉"), ("remove", 4))
+        self.assertEqual(MyClawTool._skill_management_command("请安装缺少的依赖"), ("dependencies", 0))
+
+    def test_management_command_short_circuits_to_manager(self):
+        from tools.my_claw_tool import MyClawTool
+
+        captured = {}
+
+        class FakeManager:
+            def __init__(self, runtime, session):
+                captured["host"] = (runtime, session)
+
+            def _invoke(self, parameters):
+                captured["parameters"] = parameters
+                yield "managed"
+
+        host = MyClawTool.__new__(MyClawTool)
+        host.runtime = "runtime"
+        host.session = "session"
+        with patch("tools.skill_manager_tool.SkillManagerTool", FakeManager):
+            result = list(host._run({"query": "删除技能2", "skills_root": "skills"}, None, []))
+
+        self.assertEqual(result, ["managed"])
+        self.assertEqual(captured["host"], ("runtime", "session"))
+        self.assertEqual(captured["parameters"]["action"], "remove")
+        self.assertEqual(captured["parameters"]["index"], 2)
 
 
 if __name__ == "__main__":
