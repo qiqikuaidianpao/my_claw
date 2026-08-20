@@ -5,8 +5,8 @@ identity:
     en_US: my_claw
     zh_Hans: my_claw
   description:
-    en_US: Skill-driven agent with progressive disclosure, cross-session memory and hot-swappable skill packs.
-    zh_Hans: 技能渐进式披露 + 跨会话记忆 + 技能热插拔的智能体。
+    en_US: Smart, soulful and always growing — the little lobster on Dify, a caring personal/company assistant that knows you better every day.
+    zh_Hans: 聪明、有灵魂、会成长的 Dify 版小龙虾，一个越来越懂你的'个人/企业'贴心助手。
   icon: icon.svg
   tags:
     - productivity

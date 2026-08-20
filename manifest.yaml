@@ -1,4 +1,4 @@
-version: 0.5.4
+version: 0.5.5
 type: plugin
 author: qiqikuaidianpao
 name: my_claw
@@ -8,10 +8,10 @@ label:
   zh_Hans: my_claw
   pt_BR: my_claw
 description:
-  en_US: "A skill-driven agent with progressive disclosure, cross-session memory and hot-swappable skill packs. Modernized fork of mini_claw."
-  zh_Hans: "技能渐进式披露 + 跨会话记忆 + 技能热插拔的智能体。基于 mini_claw 的现代化重构版。"
-  ja_JP: "スキルの段階的開示、セッション横断メモリ、ホットスワップ可能なスキルパックを備えたエージェント。mini_claw の近代化フォーク。"
-  pt_BR: "Um agente orientado a habilidades com divulgação progressiva, memória entre sessões e pacotes de habilidades substituíveis em tempo real. Fork modernizado do mini_claw."
+  en_US: "Smart, soulful, and always growing — the little lobster on Dify. Short & long-term memory, identity and personality, hot-swappable skills. A caring assistant for you and your team that knows you better every day."
+  zh_Hans: "聪明、有灵魂、会成长的 Dify 版小龙虾：具备短期与长期记忆，有身份、有性格，技能可热插拔——一个越来越懂你的'个人/企业'贴心助手。【具备 skill 调用与跨会话记忆】"
+  ja_JP: "賢く、魂を持ち、成長し続ける Dify 版ロブスター。短期・長期メモリ、アイデンティティと性格、ホットスワップ可能なスキルを備え、使うほどあなたを理解する個人/企業向けアシスタント。"
+  pt_BR: "Uma lagostinha inteligente, cheia de alma e em constante crescimento no Dify. Memória de curto e longo prazo, identidade e personalidade, skills trocáveis a quente — um assistente atento para você e sua empresa, que entende você melhor a cada dia."
 icon: icon.svg
 icon_dark: icon.svg
 repo: https://github.com/qiqikuaidianpao/my_claw
@@ -40,7 +40,7 @@ plugins:
   tools:
     - provider/my_claw.yaml
 meta:
-  version: 0.5.4
+  version: 0.5.5
   arch:
     - amd64
     - arm64

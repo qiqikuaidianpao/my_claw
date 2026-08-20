@@ -1,93 +1,107 @@
 # my_claw
 
-A skill-driven agent plugin for Dify with **progressive disclosure**,
-**cross-session memory** and **hot-swappable skill packs**.
+**Author:** qiqikuaidianpao
+**Version:** 0.5.5
+**Type:** Tool (Tool Plugin)
 
-my_claw is a modernized, re-architected fork of
-[mini_claw](https://github.com/lfenghx/mini_claw) v1.2.0 (Apache-2.0),
-re-released with the original author's blessing. See [NOTICE](NOTICE) for
-provenance.
+### Overview
 
-## Highlights
+my_claw is a little lobster with a soul on the Dify platform — an AI
+companion with short-term and long-term memory, plus identity, personality
+and soul settings. It aims to help you feel the warmth of AI: the more you
+work with it, the better it knows you. Come and adopt a dedicated AI
+assistant for yourself or your company.
 
-- **Skill packs with progressive disclosure** — drop a zip containing a
-  `SKILL.md` manifest plus scripts; the agent loads instructions only when a
-  task matches, so context stays small. Strictly typed manifests (pydantic)
-  make skill eligibility deterministic instead of heuristic.
-- **Whole-round streaming, dual-channel reasoning** — one model call is an
-  indivisible round: intermediate tool-call rounds publish nothing, the final
-  round publishes complete, tag-balanced text. Reasoning is consumed from the
-  dedicated `reasoning_content` field when the platform provides it and falls
-  back to `<think>` tag parsing otherwise. No more answers swallowed by an
-  unclosed thinking region.
-- **Cross-session memory and persona** — a four-document persona model
-  (identity, user profile, soul rules, managed memory) plus daily digests,
-  all modularized and unit-tested.
-- **Batteries for real work** — file generation skills (docx/xlsx/svg/ics),
-  group messaging (Feishu/Lark webhook), each as an isolated, zero-dependency
-  skill pack.
-- **Security-first execution** — command allow-lists, path-escape guards,
-  SSRF-protected fetching, zip-slip protection, and an approval workflow for
-  sensitive operations.
-- **Platform-agnostic kernel** — the agent core has zero SDK imports and is
-  covered by unit tests; Dify is an adapter, so other hosts are possible.
+my_claw follows the **Skill Progressive Disclosure** execution model: it
+treats skill packs as a toolbox, so the agent reads a skill's manual only
+when a task matches, then reads files and runs scripts as needed, finally
+delivering text or files. Skills are hot-swappable — install or remove them
+right in the chat.
 
-## Source & contact
+### Use Cases
+
+- You want a soulful AI assistant that remembers you and grows with daily use
+- You want to build a dedicated assistant for yourself or your team, with its
+  own identity and personality
+- You want to extend its abilities by dropping in skill packs (documents,
+  charts, schedules, group messages, and your own)
+
+### Tools
+
+This plugin provides two tools:
+
+- **my_claw**: a soulful AI assistant for conversation and task execution. It
+  has short-term and long-term memory, identity/personality/soul settings,
+  and adapts to user input for personalized service.
+- **Skill Manager**: manages the skills directory. You can view / install /
+  remove / export skills, and run dependency checks & installation.
+
+  ![tools](_assets/shot-tools.png)
+
+### How to Use (in Dify)
+
+1. Install this plugin from the marketplace (or from a local `.difypkg` file).
+2. For self-hosted users: set `FILES_URL` in Dify's `.env` to your Dify
+   address (restart Dify afterwards), otherwise Dify may not be able to
+   fetch uploaded files.
+3. Build a workflow like the example below — route messages that contain
+   "skill" to **Skill Manager**, everything else to **my_claw**:
+
+   ![workflow](_assets/shot-workflow.png)
+
+4. Chat with my_claw and set up a persona — tell it your name and
+   preferences once, and it remembers across sessions:
+
+   ![persona](_assets/shot-persona.png)
+
+   Tip: send `重置人格` (reset persona) to clear identity and memory and
+   start over.
+
+5. Use Skill Manager to extend my_claw with custom tools — upload a skill
+   pack (.zip) and say "新增技能" (install skill). Skills support
+   view / add / delete / export, availability checks and dependency
+   checks/installation:
+
+   ![skill](_assets/shot-skill.png)
+
+   A skill pack is a directory (zipped) with a `SKILL.md` front-matter
+   manifest:
+
+   ```yaml
+   ---
+   name: my-skill
+   description: What this skill does
+   read-when: When the agent should load this skill
+   metadata:
+     requires:
+       bins: [python3]
+   ---
+   # Instructions for the agent ...
+   ```
+
+   Feature: built-in dependency detection and installation. The agent is no
+   longer allowed to install dependencies by itself — declare dependencies
+   in the `metadata` of `SKILL.md` instead of the body, and run
+   `依赖安装` to install what can be installed automatically.
+
+   Feature: compatible with OpenClaw's skill directory structure — standard
+   skills with YAML front-matter metadata work out of the box.
+
+### Troubleshooting
+
+- **No visible reply** with some models: the provider plugin must support
+  function calling / tool use; switching models or upgrading the provider
+  plugin usually fixes it.
+- **Skill not invoked**: the more complete the skill package, the smoother
+  the invocation — make sure files and scripts follow the standard format
+  above.
+
+### Author & Contact
 
 - Repository: <https://github.com/qiqikuaidianpao/my_claw>
 - Contact: open a GitHub issue in the repository above.
 
-## Install
-
-### From marketplace
-
-Search for **my_claw** in the Dify plugin marketplace (coming soon).
-
-### From local package
-
-1. Download or build `my_claw.difypkg` (see below).
-2. In Dify: **Plugins -> Install plugin -> Local package file**, then drop the
-   `.difypkg` file.
-
-## Quick start
-
-1. Create a Chatflow (or open an existing one), add a tool node and pick
-   **my_claw**.
-2. Configure the model you want the agent to use (any model installed in your
-   workspace).
-3. Wire the user query (and optional file list) into the tool node, and the
-   tool's `text` / `files` outputs into a reply node.
-4. Open the app and try:
-
-   ```text
-   list skills
-   Calculate a lease: principal 5,000,000 CNY, 6% annual, 36 equal installments
-   Send the result to the project group
-   ```
-
-### Manage skill packs
-
-Use the bundled **skill manager** tool in the same chatflow:
-
-- `list skills` — show installed packs and their eligibility
-- upload a `.zip` + `install skill` — hot-install a new pack
-- `remove skill 2` — uninstall by index
-
-A skill pack is a directory (zipped) with a `SKILL.md` front-matter manifest:
-
-```yaml
----
-name: my-skill
-description: What this skill does
-read-when: When the agent should load this skill
-metadata:
-  requires:
-    bins: [python3]
----
-# Instructions for the agent ...
-```
-
-## Development
+### Development
 
 ```bash
 pip install -r requirements.txt pytest
@@ -95,16 +109,12 @@ pytest tests/ -q          # kernel unit tests (no Dify needed)
 python scripts/package.py # build my_claw.difypkg
 ```
 
-The layout separates a pure kernel from the platform adapter:
+The agent core is platform-agnostic (zero SDK imports, fully unit-tested);
+Dify is an adapter, so other hosts are possible.
 
-```
-core/           platform-agnostic agent kernel (no SDK imports)
-adapters/dify/  Dify plugin glue: LLM client, storage, message emitter
-provider/ tools/  plugin manifests (thin)
-tests/          unit tests for kernel and adapters
-```
+### Provenance & License
 
-## License
-
-Apache-2.0. This project derives from mini_claw by lfenghx (Apache-2.0);
-attribution and per-module provenance are recorded in [NOTICE](NOTICE).
+Apache-2.0. my_claw is a modernized, re-architected fork of
+[mini_claw](https://github.com/lfenghx/mini_claw) v1.2.0 by lfenghx,
+re-released with the original author's blessing. Attribution and per-module
+provenance are recorded in [NOTICE](NOTICE).

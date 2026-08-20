@@ -8,8 +8,8 @@ identity:
     ja_JP: "my_claw"
 description:
   human:
-    en_US: "Skill-driven agent with progressive disclosure, cross-session memory and hot-swappable skill packs."
-    zh_Hans: "技能渐进式披露 + 跨会话记忆 + 技能热插拔的智能体。"
+    en_US: "A soulful AI assistant for conversation and task execution, with short/long-term memory, identity and personality."
+    zh_Hans: "有灵魂的 AI 助手，用于对话和任务执行。具备短期、长期记忆和身份、性格、灵魂设定，根据用户输入提供个性化服务。"
     pt_BR: "Skill-driven agent with progressive disclosure and hot-swappable skill packs."
     ja_JP: "スキル駆動型エージェント。スキルの段階的開示とホットスワップに対応。"
   llm: "Skill-driven agent. Point it at a task; it loads matching skill packs, executes tools and delivers files."
