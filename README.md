@@ -54,11 +54,11 @@ This plugin provides two tools:
 
    ![persona](_assets/shot-persona.png)
 
-   Tip: send `重置人格` (reset persona) to clear identity and memory and
+   Tip: send `reset persona` to clear identity and memory and
    start over.
 
 5. Use Skill Manager to extend my_claw with custom tools — upload a skill
-   pack (.zip) and say "新增技能" (install skill). Skills support
+   pack (.zip) and say "install skill". Skills support
    view / add / delete / export, availability checks and dependency
    checks/installation:
 
@@ -82,7 +82,7 @@ This plugin provides two tools:
    Feature: built-in dependency detection and installation. The agent is no
    longer allowed to install dependencies by itself — declare dependencies
    in the `metadata` of `SKILL.md` instead of the body, and run
-   `依赖安装` to install what can be installed automatically.
+   `dependencies` to install what can be installed automatically.
 
    Feature: compatible with OpenClaw's skill directory structure — standard
    skills with YAML front-matter metadata work out of the box.

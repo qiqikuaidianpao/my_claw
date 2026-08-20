@@ -31,7 +31,8 @@ def should_skip(rel: str, ignored: set[str]) -> bool:
         prefix = "/".join(parts[: i + 1])
         if prefix in ignored:
             return True
-    return rel in ignored or os.path.basename(rel) in ignored
+    # 任一路径段命中（如深层 __pycache__）也跳过
+    return any(p in ignored for p in parts)
 
 
 def main() -> int:
