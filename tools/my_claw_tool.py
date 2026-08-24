@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from collections.abc import Generator
 from typing import Any
@@ -24,6 +25,23 @@ from dify_plugin.entities.tool import ToolInvokeMessage
 from dify_plugin import Tool
 
 SESSION_DIR_PREFIX = "myclaw-session-"
+
+_TASKY_PREFIX_RE = re.compile(
+    r"^(帮我|请|给我|麻烦|把|想|我要|我想|你|您|怎么|什么|为什么|为啥|能否|可以|会不会|是不是|查|看|算|写|做|生成|整理|删除|修改|安装|下载|上传|翻译|总结|分析|对比|规划|列|找|发|建|创建|重置|新增|停止|继续)"
+)
+_SENTENCE_PUNCT_RE = re.compile(r"[，。,.!?？!：:;；、\s]")
+
+
+def looks_like_name(s: str) -> bool:
+    """称呼判定：短、无标点/空格、非任务/问句开头。放行可疑输入优于误吞任务。"""
+    s = s.strip()
+    if len(s) < 2 or len(s) > 12:
+        return False
+    if _SENTENCE_PUNCT_RE.search(s):
+        return False
+    if _TASKY_PREFIX_RE.match(s):
+        return False
+    return True
 
 
 class MyClawTool(Tool):
@@ -295,7 +313,7 @@ class MyClawTool(Tool):
         stage = raw.decode("utf-8", errors="ignore").strip() if raw else ""
         if "重置人格" in query or "reset persona" in query.lower():
             persona.reset()
-            kv.set(stage_key, b"0")
+            kv.set(stage_key, b"1")
             yield self.create_text_message("已清空人格与记忆，重新开始。请问怎么称呼你？")
             return True
         user_doc = persona.read("USER.md").strip()
@@ -306,6 +324,9 @@ class MyClawTool(Tool):
             if name.lower() in greetings or name.endswith(("?", "？")):
                 yield self.create_text_message("我还在的～不过还想确认一下：怎么称呼你？（直接回复称呼即可）")
                 return True
+            if not looks_like_name(name):
+                # 短任务被当成称呼吞掉是糟糕体验：放行正常处理，称呼留待之后
+                return False
             persona.write("USER.md", "称呼：" + name)
             persona.write("IDENTITY.md", "# 身份\nmy_claw，" + name + "的智能办公助手。可靠、简洁、执行导向。")
             kv.set(stage_key, b"done")

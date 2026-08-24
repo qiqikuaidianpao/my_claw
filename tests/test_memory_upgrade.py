@@ -298,3 +298,32 @@ class TestArchiveView(unittest.TestCase):
 import json
 import os
 from datetime import datetime, timedelta
+
+
+class TestLooksLikeName(unittest.TestCase):
+    """首用引导防误吞：短任务/问句放行，真称呼才落档。"""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        import sys as _sys
+        spec = importlib.util.find_spec("tools.my_claw_tool")
+        if spec is None:  # dify_plugin 未安装环境（CI精简）下跳过
+            raise unittest.SkipTest("tools.my_claw_tool requires dify_plugin")
+        from tools.my_claw_tool import looks_like_name
+        cls.fn = staticmethod(looks_like_name)
+
+    def test_real_names_accepted(self):
+        for s in ("boss", "小任", "张伟", "Alex", "王大明"):
+            self.assertTrue(self.fn(s), s)
+
+    def test_tasks_rejected(self):
+        for s in ("帮我整理一下租赁的资料", "把上次的那个东西改一下", "查一下余额", "算个账", "写个周报", "整理资料"):
+            self.assertFalse(self.fn(s), s)
+
+    def test_questions_and_punct_rejected(self):
+        for s in ("你能做什么", "在吗？", "你好，请问", "我叫小任，请多关照"):
+            self.assertFalse(self.fn(s), s)
+
+    def test_long_rejected(self):
+        self.assertFalse(self.fn("一个特别特别特别特别特别特别长的名字"))
