@@ -83,17 +83,31 @@ class PersonaStore:
                 result[current].append(line[2:].strip())
         return result
 
+    def free_text(self) -> str:
+        """The un-managed (free-form) part of MEMORY.md, above the header."""
+        memory = self.read("MEMORY.md")
+        header_idx = memory.find(MANAGED_HEADER)
+        return memory[:header_idx].rstrip() if header_idx >= 0 else memory.rstrip()
+
+    def _write_managed(self, sections: dict[str, list[str]]) -> None:
+        sections = {s: items for s, items in sections.items() if items}
+        free_text = self.free_text()
+        parts = [free_text] if free_text else []
+        if sections:
+            parts.append(MANAGED_HEADER)
+            for section in sections:  # preserve document order (stable numbering)
+                parts.append(f"### {section}")
+                parts.extend(f"- {it}" for it in sections[section])
+        self.write("MEMORY.md", "\n\n".join(parts).rstrip() + "\n")
+
     def merge_managed(self, updates: dict[str, list[str]], *, max_items: int = 12) -> None:
         """Merge extracted memory items into the managed block, deduped."""
         import re
 
         existing = self.read_managed()
-        memory = self.read("MEMORY.md")
-        header_idx = memory.find(MANAGED_HEADER)
-        free_text = memory[:header_idx].rstrip() if header_idx >= 0 else memory.rstrip()
-
+        order = list(existing) + [s for s in updates if s not in existing]
         merged: dict[str, list[str]] = {}
-        for section in set(existing) | set(updates):
+        for section in order:
             items: list[str] = []
             seen: set[str] = set()
             for it in existing.get(section, []) + updates.get(section, []):
@@ -102,15 +116,35 @@ class PersonaStore:
                     seen.add(key)
                     items.append(it.strip())
             merged[section] = items[:max_items]
+        self._write_managed(merged)
 
-        parts = [free_text] if free_text else []
-        if merged:
-            parts.append(MANAGED_HEADER)
-            for section in sorted(merged):
-                if merged[section]:
-                    parts.append(f"### {section}")
-                    parts.extend(f"- {it}" for it in merged[section])
-        self.write("MEMORY.md", "\n\n".join(parts).rstrip() + "\n")
+    # ── entry-level management (查看/删除/修改记忆 commands) ─────────────
+
+    def managed_entries(self) -> list[tuple[str, str]]:
+        """Flat (section, item) pairs in document order — stable numbering."""
+        return [(sec, item) for sec, items in self.read_managed().items() for item in items]
+
+    def delete_managed_entry(self, index: int) -> tuple[str, str] | None:
+        """Remove flat entry #index (0-based); returns (section, item) or None."""
+        sections = self.read_managed()
+        flat = self.managed_entries()
+        if not 0 <= index < len(flat):
+            return None
+        sec, item = flat[index]
+        sections[sec].remove(item)
+        self._write_managed(sections)
+        return sec, item
+
+    def edit_managed_entry(self, index: int, new_text: str) -> tuple[str, str, str] | None:
+        """Replace flat entry #index; returns (section, old, new) or None."""
+        sections = self.read_managed()
+        flat = self.managed_entries()
+        if not 0 <= index < len(flat):
+            return None
+        sec, old = flat[index]
+        sections[sec][sections[sec].index(old)] = new_text.strip()
+        self._write_managed(sections)
+        return sec, old, new_text.strip()
 
     # ── prompt context ───────────────────────────────────────────────────
 

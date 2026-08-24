@@ -88,13 +88,22 @@ class MyClawTool(Tool):
             if handled:
                 return
 
-        # ── 前置阶段2：人格引导（首用问称呼；"重置人格"清空） ──
+        # ── 前置阶段2：记忆管理命令（查看/删除/修改，确定性路由不耗LLM；
+        #    放在 onboarding 之前，避免首用时被当作称呼吞掉） ──
+        from core.memory.commands import execute_memory_command, parse_memory_command
+
+        mem_cmd = parse_memory_command(query)
+        if mem_cmd is not None:
+            yield self.create_text_message(execute_memory_command(persona, mem_cmd))
+            return
+
+        # ── 前置阶段3：人格引导（首用问称呼；"重置人格"清空） ──
         if str(tool_parameters.get("skip_onboarding") or "").lower() not in ("true", "1", "yes"):
             handled = yield from self._onboarding_phase(kv, persona, query)
             if handled:
                 return
 
-        # ── 前置阶段3：澄清应答（上一轮 ask_user 挂起的选项匹配） ──
+        # ── 前置阶段4：澄清应答（上一轮 ask_user 挂起的选项匹配） ──
         from core.clarify import PENDING_KEY, PendingClarify, build_continuation, match_option
 
         raw_pending = kv.get(PENDING_KEY)
