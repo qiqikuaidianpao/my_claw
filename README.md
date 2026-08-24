@@ -1,7 +1,7 @@
 # my_claw
 
 **Author:** qiqikuaidianpao
-**Version:** 0.5.5
+**Version:** 0.6.0
 **Type:** Tool (Tool Plugin)
 
 ### Overview
@@ -16,7 +16,16 @@ my_claw follows the **Skill Progressive Disclosure** execution model: it
 treats skill packs as a toolbox, so the agent reads a skill's manual only
 when a task matches, then reads files and runs scripts as needed, finally
 delivering text or files. Skills are hot-swappable — install or remove them
-right in the chat.
+right in the chat. Skill packs follow the open **agentskills.io** standard
+(a `SKILL.md` manifest needs just `name` + `description`), so packs built
+for Claude/OpenAI-style agents work here too.
+
+When a request is genuinely ambiguous, my_claw does not guess: it pauses
+and shows 2-4 numbered options, then continues with the one you pick.
+And its long-term memory is manageable in chat — list, edit or delete
+remembered items by number, with a nightly "dream" pass that extracts
+facts/preferences/experiences from yesterday's chats, merges duplicates
+and archives stale ones.
 
 ### Use Cases
 
@@ -25,6 +34,10 @@ right in the chat.
   own identity and personality
 - You want to extend its abilities by dropping in skill packs (documents,
   charts, schedules, group messages, and your own)
+- You want an agent that asks a quick multiple-choice question instead of
+  guessing when your request is ambiguous
+- You want memory you can audit and curate — see what it remembers, delete
+  or edit any entry, browse the archive
 
 ### Tools
 
@@ -56,6 +69,16 @@ This plugin provides two tools:
 
    Tip: send `reset persona` to clear identity and memory and
    start over.
+
+   Memory is manageable in chat (Chinese commands): list memories, delete
+   memory No. N, edit memory No. N, browse archived experiences. Questions
+   like "do you remember my birthday" are answered normally — they are
+   never mistaken for management commands. Each night my_claw also digests
+   yesterday's conversations into typed memory entries (fact / preference /
+   experience), and when entries pile up past 30 it consolidates: merges
+   duplicates, keeps the newer side of conflicts, and archives experiences
+   untouched for 60+ days (original backed up first, nothing silently
+   deleted).
 
 5. Use Skill Manager to extend my_claw with custom tools — upload a skill
    pack (.zip) and say "install skill". Skills support
