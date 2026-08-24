@@ -32,7 +32,9 @@ def build_skills_section(skills_root: str) -> str:
     for s in skills:
         missing = s.get("missing_py") or []
         note = f"（缺依赖：{','.join(missing[:3])}）" if missing else ""
-        lines.append(f"- {escape(str(s['name']))} v{escape(str(s.get('version', '0')))}{note}")
+        desc = str(s.get("description") or "").strip()
+        desc_line = f"：{escape(desc[:80])}" if desc else ""
+        lines.append(f"- {escape(str(s['name']))} v{escape(str(s.get('version', '0')))}{note}{desc_line}")
     return "\n".join(lines)
 
 

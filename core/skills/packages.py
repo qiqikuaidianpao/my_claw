@@ -18,6 +18,19 @@ from core.skills.frontparse import FrontmatterError, split_frontmatter as _split
 SKILL_FILE = "SKILL.md"
 
 
+def sanitize_skill_dirname(raw: str) -> str:
+    """agentskills.io dir names: lowercase letters, numbers and hyphens.
+
+    ``Report Generator`` → ``report-generator``; leading/trailing hyphens
+    dropped, other characters collapsed; falls back to ``skill`` when empty.
+    """
+    import re as _re
+
+    s = _re.sub(r"[^a-z0-9-]+", "-", raw.strip().lower()).strip("-")
+    s = _re.sub(r"-{2,}", "-", s)[:64] or "skill"
+    return s
+
+
 class SkillRequires(BaseModel):
     bins: list[str] = Field(default_factory=list)
     anyBins: list[str] = Field(default_factory=list)
@@ -33,14 +46,37 @@ class SkillMetaOpenClaw(BaseModel):
 
 
 class SkillManifest(BaseModel):
-    """Strongly typed SKILL.md front-matter."""
+    """Strongly typed SKILL.md front-matter.
 
-    model_config = {"extra": "allow"}
+    Compatible with the agentskills.io open standard (adopted by Claude /
+    OpenAI / Google): only ``name`` is strictly required, ``description``
+    defaults to empty, unknown fields pass through into ``extra``.
+    """
+
+    model_config = {"extra": "allow", "populate_by_name": True}
 
     name: str
     description: str = ""
     version: str = "0.0.0"
     read_when: str = Field(default="", alias="read-when")
+
+    @property
+    def trigger_hint(self) -> str:
+        """agentskills.io packs carry no read-when; description doubles as trigger."""
+        return self.read_when or self.description
+
+    @property
+    def name_warnings(self) -> list[str]:
+        """agentskills.io name constraints reported as warnings, never rejections."""
+        warnings: list[str] = []
+        if len(self.name) > 64:
+            warnings.append("name exceeds 64 characters")
+        import re as _re
+
+        if self.name and not _re.fullmatch(r"[a-z0-9][a-z0-9-]*", self.name):
+            warnings.append("name should be lowercase letters, numbers and hyphens")
+        return warnings
+
 
     # visibility / invocation gates (mini_claw compat)
     user_invocable: bool = Field(default=True, alias="user-invocable")

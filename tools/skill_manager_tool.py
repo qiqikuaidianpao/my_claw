@@ -17,7 +17,7 @@ from typing import Any
 
 from core import log
 from core.skills.commands import parse_skill_management_command
-from core.skills.packages import list_installed, parse_manifest
+from core.skills.packages import list_installed, parse_manifest, sanitize_skill_dirname
 from core.util import safe_get, shorten_text
 from dify_plugin.entities.tool import ToolInvokeMessage
 from dify_plugin import Tool
@@ -122,7 +122,8 @@ class SkillManagerTool(Tool):
                 root_dir = self._locate_skill_root(z)
                 if root_dir is None:
                     raise ValueError("压缩包内未找到 SKILL.md")
-                target = os.path.join(skills_root, os.path.basename(root_dir) or "unnamed-skill")
+                raw_dir = os.path.basename(root_dir) or "unnamed-skill"
+                target = os.path.join(skills_root, sanitize_skill_dirname(raw_dir))
                 if os.path.isdir(target):
                     shutil.rmtree(target)
                 os.makedirs(target, exist_ok=True)
