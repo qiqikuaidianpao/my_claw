@@ -102,12 +102,12 @@ class TestOnboarding(unittest.TestCase):
         gen = MyClawTool._onboarding_phase(C(), kv, persona, "帮我写个文件")
         msgs = list(gen)
         self.assertTrue(any("称呼" in m for m in msgs))
-        self.assertEqual(kv.get("claw:onboarding:stage"), b"1")
+        self.assertEqual(kv.get("claw:onboarding:a:user::stage"), b"1")
 
     def test_second_round_saves_name(self):
         kv = FakeKV()
         persona = PersonaStore(kv, app_id="a")
-        kv.set("claw:onboarding:stage", b"1")
+        kv.set("claw:onboarding:a:user::stage", b"1")
         from tools.my_claw_tool import MyClawTool
 
         class C:
