@@ -308,7 +308,8 @@ class MyClawTool(Tool):
 
     def _onboarding_phase(self, kv: DifyKVStorage, persona: PersonaStore, query: str):
         """两段式人格引导：首用问称呼，次轮落档并继续正常任务。"""
-        stage_key = "claw:onboarding:stage"
+        # stage 按 app+user 隔离——不同应用/访客的引导互不串台
+        stage_key = f"claw:onboarding:{persona.app_id}:user:{persona.user_id}:stage"
         raw = kv.get(stage_key)
         stage = raw.decode("utf-8", errors="ignore").strip() if raw else ""
         if "重置人格" in query or "reset persona" in query.lower():
