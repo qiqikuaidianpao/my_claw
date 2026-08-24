@@ -148,3 +148,153 @@ class TestRoundTrip(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# ═══ E5: daily extraction + consolidation ("dream") ═══════════════════════
+
+from core.memory import consolidate as cons
+
+
+class FakeLLM:
+    """invoke_text stub returning a canned payload."""
+
+    def __init__(self, payload: str):
+        self.payload = payload
+        self.calls: list[str] = []
+
+    def invoke_text(self, system: str, messages: list) -> str:
+        self.calls.append(system)
+        return self.payload
+
+
+def seeded_service(yesterday_digest: str = "") -> tuple:
+    from core.memory.service import MemoryService
+
+    kv = FakeKV()
+    m = MemoryService(kv, app_id="a1", user_id="u1")
+    p = PersonaStore(kv, app_id="a1", user_id="u1")
+    if yesterday_digest:
+        day = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        kv.data[m._day_key(day)] = yesterday_digest.encode("utf-8")
+    return kv, m, p
+
+
+class TestDailyExtract(unittest.TestCase):
+    def test_extracts_three_types_with_prefixes_and_date(self):
+        kv, m, p = seeded_service("# 昨日\n- 用户: 项目A本金5000万\n- 助手: 已按偏好输出简报")
+        llm = FakeLLM(
+            '{"user_preferences": ["[偏好] 汇报先给结论"], "project_facts": ["[事实] 本金5000万"], '
+            '"episodic": ["[经历] 处理了项目A测算（来自8月24日对话）"]}'
+        )
+        self.assertTrue(cons.daily_extract(m, p, llm))
+        managed = dict((sec, items) for sec, items in p.read_managed().items())
+        flat = {item for _, item in p.managed_entries()}
+        self.assertIn("[偏好] 汇报先给结论", flat)
+        self.assertIn("[事实] 本金5000万", flat)
+        self.assertTrue(any(i.startswith("[经历] 处理了项目A测算") and "（来自8月24日对话）" in i for i in flat))
+
+    def test_runs_once_per_day(self):
+        kv, m, p = seeded_service("# 昨日\n- 用户: x\n- 助手: y")
+        llm = FakeLLM("{}")
+        self.assertTrue(cons.daily_extract(m, p, llm))  # marker set even for {}
+        self.assertFalse(cons.daily_extract(m, p, llm))  # second call no-op
+
+    def test_no_digest_skips_llm(self):
+        kv, m, p = seeded_service("")
+        llm = FakeLLM('{"project_facts": ["[事实] 不应出现"]}')
+        self.assertFalse(cons.daily_extract(m, p, llm))
+        self.assertEqual(llm.calls, [])
+        self.assertEqual(p.managed_entries(), [])
+
+    def test_parse_failure_no_merge(self):
+        kv, m, p = seeded_service("# 昨日\n- 用户: x\n- 助手: y")
+        llm = FakeLLM("这不是JSON")
+        self.assertFalse(cons.daily_extract(m, p, llm))
+        self.assertEqual(p.managed_entries(), [])
+
+
+class TestConsolidate(unittest.TestCase):
+    def _seeded(self, n: int, stale: int = 0):
+        kv = FakeKV()
+        p = PersonaStore(kv, app_id="a1", user_id="u1")
+        d = datetime.now() - timedelta(days=90)
+        items = [f"[事实] 条目{i}，内容各不相同" for i in range(n - stale)]
+        items += [f"[经历] 久远经历{j}（来自{d.month}月{d.day}日对话）" for j in range(stale)]
+        sections = ("user_facts", "project_facts", "user_preferences", "episodic")
+        for i, item in enumerate(items):  # spread across sections (merge caps 12/section)
+            p.merge_managed({sections[i % len(sections)]: [item]})
+        return p
+
+    def test_under_threshold_untouched(self):
+        p = self._seeded(10)
+        llm = FakeLLM('["whatever"]')
+        self.assertEqual(cons.consolidate(p, llm), "")
+        self.assertEqual(len(p.managed_entries()), 10)
+
+    def test_merge_and_archive_and_bak(self):
+        p = self._seeded(40, stale=5)
+        keep = [item for _, item in p.managed_entries()]
+        llm = FakeLLM(json.dumps(keep, ensure_ascii=False))
+        note = cons.consolidate(p, llm)
+        self.assertIn("记忆整理完成", note)
+        # stale episodic archived out of MEMORY.md
+        self.assertFalse(any("久远经历" in item for _, item in p.managed_entries()))
+        archive = p.read("MEMORY.archive.md")
+        self.assertIn("久远经历0", archive)
+        self.assertIn("## 归档于", archive)
+        # bak holds the pre-consolidation original
+        self.assertIn("久远经历0", p.read("MEMORY.bak.md"))
+        self.assertIn("条目0", p.read("MEMORY.bak.md"))
+
+    def test_parse_failure_leaves_memory_unchanged(self):
+        p = self._seeded(40)
+        before = p.read("MEMORY.md")
+        llm = FakeLLM("垃圾输出")
+        note = cons.consolidate(p, llm)
+        self.assertIn("解析失败", note)
+        self.assertEqual(p.read("MEMORY.md"), before)
+        self.assertEqual(p.read("MEMORY.bak.md"), "")  # bak not written
+
+    def test_second_consolidate_overwrites_previous_bak(self):
+        p = self._seeded(40)
+        keep = [item for _, item in p.managed_entries()]
+        cons.consolidate(p, FakeLLM(json.dumps(keep, ensure_ascii=False)))
+        first_bak = p.read("MEMORY.bak.md")
+        p.merge_managed({"user_facts": ["[事实] 新增一条让条目再次超限" + "填充" * 5]})
+        keep2 = [item for _, item in p.managed_entries()]
+        cons.consolidate(p, FakeLLM(json.dumps(keep2, ensure_ascii=False)))
+        second_bak = p.read("MEMORY.bak.md")
+        self.assertNotEqual(first_bak, second_bak)  # single generation, overwritten
+
+    def test_stale_detection_helper(self):
+        d = datetime.now() - timedelta(days=90)
+        old = f"[经历] 老经历（来自{d.month}月{d.day}日对话）"
+        fresh = "[经历] 新经历（来自今天对话）"
+        self.assertTrue(cons._stale_episodic(old))
+        self.assertFalse(cons._stale_episodic(fresh))
+        self.assertFalse(cons._stale_episodic("[事实] 无日期不是经历"))
+
+
+class TestArchiveView(unittest.TestCase):
+    def test_view_archive_routing_and_empty(self):
+        from core.memory.commands import execute_memory_command, parse_memory_command
+
+        cmd = parse_memory_command("查看归档记忆")
+        self.assertIsNotNone(cmd)
+        self.assertEqual(cmd.action, "archive")
+        kv = FakeKV()
+        p = PersonaStore(kv, app_id="a1")
+        self.assertIn("归档记忆是空的", execute_memory_command(p, cmd))
+
+    def test_list_mentions_archive_count(self):
+        kv = FakeKV()
+        p = PersonaStore(kv, app_id="a1")
+        p.merge_managed({"user_facts": ["[事实] x"]})
+        p.write("MEMORY.archive.md", "# 归档记忆\n## 归档于 2026-08-24\n- [经历] 老经历\n")
+        text = format_memory_list(p)
+        self.assertIn("另有 1 条已归档", text)
+
+
+import json
+import os
+from datetime import datetime, timedelta

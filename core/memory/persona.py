@@ -12,6 +12,7 @@ from core import log
 
 DOC_NAMES = ("IDENTITY.md", "USER.md", "SOUL.md", "MEMORY.md")
 MANAGED_HEADER = "## Managed Memory (auto)"
+MEMORY_FAMILY = ("MEMORY.md", "MEMORY.bak.md", "MEMORY.archive.md")  # user-scoped like MEMORY.md
 
 
 class KVLike(Protocol):
@@ -36,25 +37,25 @@ class PersonaStore:
     # ── docs ─────────────────────────────────────────────────────────────
 
     def read(self, name: str) -> str:
-        if name not in DOC_NAMES:
+        if name not in DOC_NAMES and name not in MEMORY_FAMILY:
             raise ValueError(f"unknown persona doc: {name}")
-        user_scoped = name in ("USER.md", "MEMORY.md")
+        user_scoped = name in ("USER.md",) or name in MEMORY_FAMILY
         raw = self.kv.get(self._key(name, user_scoped=user_scoped))
         if raw is None and user_scoped:
             raw = self.kv.get(self._key(name, user_scoped=False))
         return raw.decode("utf-8", errors="ignore") if raw else ""
 
     def write(self, name: str, content: str) -> None:
-        if name not in DOC_NAMES:
+        if name not in DOC_NAMES and name not in MEMORY_FAMILY:
             raise ValueError(f"unknown persona doc: {name}")
-        user_scoped = name in ("USER.md", "MEMORY.md")
+        user_scoped = name in ("USER.md",) or name in MEMORY_FAMILY
         self.kv.set(self._key(name, user_scoped=user_scoped), content.encode("utf-8"))
 
     def reset(self, *, keep_identity: bool = False) -> None:
-        for name in DOC_NAMES:
+        for name in DOC_NAMES + MEMORY_FAMILY:
             if keep_identity and name == "IDENTITY.md":
                 continue
-            user_scoped = name in ("USER.md", "MEMORY.md")
+            user_scoped = name in ("USER.md",) or name in MEMORY_FAMILY
             for scoped in (user_scoped, False):
                 key = self._key(name, user_scoped=scoped)
                 try:

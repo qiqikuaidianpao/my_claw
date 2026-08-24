@@ -187,6 +187,13 @@ class MyClawTool(Tool):
                     history.append(query, ctx.final_text)
                 memory.append_digest(query, ctx.final_text)
                 memory.gc()
+                # E5 睡眠整理：每天首轮提取昨日 digest；条目超限时触发"做梦"整理
+                from core.memory.consolidate import daily_extract, maybe_consolidate
+
+                if daily_extract(memory, persona, llm):
+                    note = maybe_consolidate(persona, llm)
+                    if note:
+                        emitter.text(note)
             except Exception as e:
                 log.warning("memory_persist_failed", detail=str(e))
 

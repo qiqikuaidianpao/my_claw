@@ -109,8 +109,10 @@ class ContextManager:
         try:
             raw = self.llm.invoke_text(
                 system=(
-                    "从对话中提取长期记忆。只输出JSON对象，键为 user_preferences/project_facts/decisions，"
-                    "值为字符串数组（每条不超60字）。没有可提取的就输出 {}。"
+                    "从对话中提取长期记忆。只输出JSON对象，键为 user_preferences/project_facts/episodic，"
+                    "值为字符串数组（每条不超60字）。user_preferences 每条以「[偏好] 」开头，"
+                    "project_facts 以「[事实] 」开头，episodic（用户处理任务的做法、某场景的决策等经历）"
+                    "以「[经历] 」开头并在行尾加「（来自今天对话）」。没有可提取的就输出 {}。"
                 ),
                 messages=[{"role": "user", "content": transcript[:6000]}],
             )
