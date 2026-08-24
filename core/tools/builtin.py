@@ -301,3 +301,47 @@ def read_skill_file(ctx: SessionContext, emitter, skill_name: str, file: str = "
     if not os.path.isfile(real):
         return _ok({"error": "not_found", "skill": skill_name, "file": file})
     return _ok({"skill": skill_name, "file": file, "content": read_text(real, max_chars)})
+
+
+@tool(
+    "ask_user",
+    description=(
+        "Ask the user a clarifying question with 2-4 concrete options when their request "
+        "has materially different valid interpretations. Do NOT guess: call this tool, end "
+        "your turn, and the user's next reply will route back into the original task. "
+        "Only use when the interpretations lead to substantially different outcomes; "
+        "for trivial ambiguity (file names, minor details) just pick the most likely and proceed."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "question": {"type": "string", "description": "short question headline, e.g. 这个任务有几种理解，你想做哪个？"},
+            "options": {"type": "array", "items": {"type": "string"}, "description": "2-4 options, each a specific action with a short label"},
+        },
+    },
+    required=("question", "options"),
+    progress="🤔 正在向用户确认意图…",
+)
+def ask_user(ctx: SessionContext, emitter, question: str, options: list[str]) -> ToolResult:
+    """Write pending clarify into session KV; kernel terminates the turn."""
+    cleaned = [str(o).strip() for o in options if str(o).strip()]
+    if not 2 <= len(cleaned) <= 4:
+        return ToolResult(content='{"error": "options_must_be_2_to_4"}', ok=False)
+
+    # find the original user query (last user message before this tool call)
+    original = ""
+    for msg in reversed(ctx.messages):
+        if msg.get("role") == "user" and msg.get("content") and not msg.get("content").startswith("你"):
+            original = msg["content"]
+            break
+    if not original:
+        original = str((ctx.extra or {}).get("original_query", ""))
+
+    from core.clarify import PENDING_KEY, PendingClarify
+
+    pending = PendingClarify(original_query=original, question=str(question).strip(), options=cleaned)
+    kv_store = (ctx.extra or {}).get("kv_store")
+    if kv_store is not None:
+        kv_store.set(PENDING_KEY, pending.to_json().encode("utf-8"))
+    # marker consumed by the kernel to terminate the turn
+    return ToolResult(content='{"clarify_asked": true, "options_count": %d}' % len(cleaned))

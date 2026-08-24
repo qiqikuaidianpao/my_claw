@@ -128,6 +128,22 @@ class AgentKernel:
 
             try:
                 result = self.tool_executor(spec, args, ctx, self.emitter)
+                # 澄清短路：模型调用 ask_user 后挂起等待用户选择，结束本轮
+                if '"clarify_asked": true' in result.content:
+                    from core.clarify import format_question
+
+                    options_json = result.content
+                    import re as _re
+
+                    m = _re.search(r'"options_count": (\d+)', options_json)
+                    count = int(m.group(1)) if m else 0
+                    question = str(args.get("question", ""))
+                    options = [str(o) for o in (args.get("options") or [])][:count or 4]
+                    ctx.final_text = format_question(question, options)
+                    self._feed_tool_result(ctx, call_id, name, {"status": "awaiting_user_clarification"})
+                    self._emit_text(ctx.final_text)
+                    ctx.final_text_emitted = True
+                    break
                 # 审批短路：工具要求人工审批时，直接向用户挂起并结束本轮
                 if '"approval_required": true' in result.content:
                     ctx.final_text = (

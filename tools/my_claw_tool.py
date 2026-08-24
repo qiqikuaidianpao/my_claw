@@ -94,6 +94,31 @@ class MyClawTool(Tool):
             if handled:
                 return
 
+        # ── 前置阶段3：澄清应答（上一轮 ask_user 挂起的选项匹配） ──
+        from core.clarify import PENDING_KEY, PendingClarify, build_continuation, match_option
+
+        raw_pending = kv.get(PENDING_KEY)
+        if raw_pending:
+            pending_clarify = PendingClarify.from_json(raw_pending)
+            if pending_clarify is None or pending_clarify.expired() or not pending_clarify.options:
+                kv.set(PENDING_KEY, b"")
+            else:
+                hit = match_option(query, pending_clarify.options)
+                if hit is not None:
+                    kv.set(PENDING_KEY, b"")
+                    query = build_continuation(pending_clarify, hit)
+                else:
+                    pending_clarify.misses += 1
+                    if pending_clarify.misses >= 2:
+                        kv.set(PENDING_KEY, b"")  # 用户换话题，丢弃
+                    else:
+                        kv.set(PENDING_KEY, pending_clarify.to_json().encode("utf-8"))
+                        # 带着澄清上下文继续主循环，LLM 自然处理
+                        query = (
+                            f"{query}\n（系统注：上一轮你问了澄清问题：{pending_clarify.question}，"
+                            f"用户回复了上面这句。若这不是选择选项，把它当作新的用户输入处理。）"
+                        )
+
         # persisted session workspace per conversation
         session_dir = self._session_dir(kv, conversation_id)
         ws = Workspace(session_dir)
@@ -133,6 +158,8 @@ class MyClawTool(Tool):
                 log.warning("upload_save_failed", detail=str(e))
 
         ctx.extra["persona"] = persona
+        ctx.extra["kv_store"] = kv  # ask_user 澄清工具写 pending 用
+        ctx.extra["original_query"] = query
         if str(tool_parameters.get("exec_approval_enabled") or "").lower() in ("true", "1", "yes"):
             ctx.extra["approval_check"] = self._make_approval_check(kv, query, user_id, app_id, conversation_id)
 
