@@ -184,3 +184,110 @@ class TestKernelClarifySignal:
         assert "🤔" in ctx.final_text
         assert "1️⃣ A方案" in ctx.final_text
         assert "2️⃣ B方案" in ctx.final_text
+
+
+# ═══ 0.6.1: 澄清记住选择 ═══════════════════════════════════════════════════
+
+import json
+import unittest
+
+from core.clarify import ClarifyHistory, SIM_AUTO, dice, format_question
+
+
+class FakeKV2:
+    def __init__(self):
+        self.data = {}
+
+    def get(self, key):
+        return self.data.get(key)
+
+    def set(self, key, value):
+        self.data[key] = value
+
+
+class TestDice(unittest.TestCase):
+    def test_similar_questions_high(self):
+        a = "上次的那个东西改成另一个人那样"
+        b = "把上次的那个东西改成另一个样子"
+        self.assertGreaterEqual(dice(a, b), 0.6)
+
+    def test_different_questions_low(self):
+        self.assertLess(dice("帮我整理租赁资料", "算一下还款计划"), 0.2)
+
+    def test_empty(self):
+        self.assertEqual(dice("", "abc"), 0.0)
+
+
+class TestClarifyHistory(unittest.TestCase):
+    def _hist(self):
+        return ClarifyHistory(FakeKV2(), "app1", "u1")
+
+    def test_record_then_annotate(self):
+        h = self._hist()
+        q1 = "上次的那个东西改成另一个人那样"
+        h.record(q1, ["改台账里的名字", "改文件里的名字", "重做一份"], 1)
+        q2 = "把上次的那个东西改成另一个样子"
+        out = h.lookup(q2, ["改台账里的名字", "改文件里的名字", "重做一份"])
+        self.assertEqual(out["annotate"], 1)
+        self.assertIsNone(out["auto"])  # 只选过一次，不自动
+
+    def test_auto_after_two_consistent_picks(self):
+        h = self._hist()
+        q1 = "上次的那个东西改成另一个人那样"
+        q2 = "把上次的那个东西改成另一个样子"
+        opts = ["改台账里的名字", "改文件里的名字", "重做一份"]
+        h.record(q1, opts, 1)
+        h.record(q2, opts, 1)
+        out = h.lookup("上次的那个东西再改成另一个样子", opts)
+        self.assertEqual(out["auto"], 1)
+
+    def test_inconsistent_picks_no_auto(self):
+        h = self._hist()
+        q1 = "上次的那个东西改成另一个人那样"
+        h.record(q1, ["改台账", "改文件", "重做"], 0)
+        h.record("把上次的那个东西改成另一个样子", ["改台账", "改文件", "重做"], 1)
+        out = h.lookup("上次的那个东西再改成另一个样子", ["改台账", "改文件", "重做"])
+        self.assertIsNone(out["auto"])
+
+    def test_unrelated_question_no_hint(self):
+        h = self._hist()
+        h.record("上次的那个东西改成另一个人那样", ["改台账", "改文件", "重做"], 1)
+        out = h.lookup("帮我算一下还款计划", ["等额本息", "等额本金", "对比"])
+        self.assertIsNone(out["annotate"])
+        self.assertIsNone(out["auto"])
+
+    def test_history_capped(self):
+        h = self._hist()
+        for i in range(30):
+            h.record(f"问题{i}", ["a", "b"], 0)
+        items = json.loads(h.kv.data[h._key])
+        self.assertLessEqual(len(items), 20)
+
+
+class TestFormatQuestionHint(unittest.TestCase):
+    def test_hint_marks_option(self):
+        text = format_question("选哪个？", ["A方案", "B方案", "C方案"], hint_index=1)
+        self.assertIn("B方案 ⭐（上次的选择）", text)
+        self.assertNotIn("A方案 ⭐", text)
+
+
+class TestClarifyEnabledParsing(unittest.TestCase):
+    """老节点未配置 clarify_enabled 必须默认开（str(None)='none' 曾误判为关）。"""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from tools.my_claw_tool import MyClawTool
+        except ImportError:
+            raise unittest.SkipTest("requires dify_plugin (py3.10+)")
+        cls.parse = staticmethod(MyClawTool._parse_clarify_flag)
+
+    def test_missing_means_enabled(self):
+        self.assertTrue(self.parse(None))
+        self.assertTrue(self.parse({}.get("clarify_enabled")))
+
+    def test_explicit_values(self):
+        for v in (True, "true", "True", "1", "yes", "anything"):
+            self.assertTrue(self.parse(v), repr(v))
+        for v in (False, "false", "0", "no", "None", "none"):
+            self.assertFalse(self.parse(v), repr(v))

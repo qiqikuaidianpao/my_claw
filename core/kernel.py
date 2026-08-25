@@ -139,7 +139,20 @@ class AgentKernel:
                     count = int(m.group(1)) if m else 0
                     question = str(args.get("question", ""))
                     options = [str(o) for o in (args.get("options") or [])][:count or 4]
-                    ctx.final_text = format_question(question, options)
+                    history = ctx.extra.get("clarify_history")
+                    lookup = history.lookup(question, options) if history is not None else {}
+                    if lookup.get("auto") is not None:
+                        # 高频同选：不再打断，按历史选择直接继续，并向用户可见说明
+                        chosen = options[lookup["auto"]]
+                        self._emit_text(
+                            f"🧠 类似情况你之前都选「{chosen}」，这次直接按它继续；要换做法请直接说。\n"
+                        )
+                        self._feed_tool_result(
+                            ctx, call_id, name,
+                            {"clarify_resolved": chosen, "note": "按用户历史高频选择自动继续"},
+                        )
+                        continue
+                    ctx.final_text = format_question(question, options, hint_index=lookup.get("annotate"))
                     self._feed_tool_result(ctx, call_id, name, {"status": "awaiting_user_clarification"})
                     self._emit_text(ctx.final_text)
                     ctx.final_text_emitted = True

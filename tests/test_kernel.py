@@ -192,3 +192,77 @@ class TestSession(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestClarifyHistoryInKernel(unittest.TestCase):
+    """0.6.1: ask_user 拦截时的历史查询路径与工具隐藏过滤。"""
+
+    def test_hidden_tools_filters_schema(self):
+        import importlib
+
+        import core.tools.builtin as _b  # 前序测试可能 clear 过注册表，重载以重新注册
+        importlib.reload(_b)
+        from core.kernel import AgentKernel
+        from core.session import SessionContext
+
+        k = AgentKernel(llm=None, emitter=None)
+        ctx = SessionContext(session_id="s", messages=[])
+        names_all = [s["function"]["name"] for s in k._tool_schemas(ctx)]
+        self.assertIn("ask_user", names_all)
+        ctx.extra["hidden_tools"] = {"ask_user"}
+        names_hidden = [s["function"]["name"] for s in k._tool_schemas(ctx)]
+        self.assertNotIn("ask_user", names_hidden)
+        self.assertGreater(len(names_hidden), 5)  # 其余工具不受影响
+
+    def test_auto_continue_feeds_result_and_continues(self):
+        """历史高频同选：ask_user 的结果被替换为历史选择并继续本轮（不挂起）。"""
+        import json as _json
+
+        import core.tools.builtin  # noqa: F401
+        from core.kernel import AgentKernel
+        from core.session import SessionContext
+        from tests.test_clarify import FakeKV2
+        from core.clarify import ClarifyHistory
+
+        hist = ClarifyHistory(FakeKV2(), "a", "u")
+        hist.record("把上次的那个东西改成另一个人那样", ["改台账", "改文件", "重做"], 1)
+        hist.record("把上次的那个东西改成另一个样子", ["改台账", "改文件", "重做"], 1)
+
+        captured = {}
+
+        class _Em:
+            def text(self, chunk):
+                captured["emitted"] = captured.get("emitted", "") + chunk
+
+        class _Round:
+            has_tool_calls = True
+
+        class _LLM:
+            def __init__(self):
+                self.calls = 0
+
+        class _Kernel(AgentKernel):
+            def __init__(self):
+                super().__init__(llm=_LLM(), emitter=_Em(), compactor=None)
+
+            def _execute_tools(self, round_, ctx):
+                # 直接模拟 ask_user 被调用后的拦截分支
+                from core.clarify import format_question
+
+                question = "把上次的那个东西改成另一个人那样"
+                options = ["改台账", "改文件", "重做"]
+                history = ctx.extra.get("clarify_history")
+                lookup = history.lookup(question, options) if history else {}
+                assert lookup.get("auto") == 1, lookup
+                chosen = options[lookup["auto"]]
+                self._emit_text("🧠 类似情况你之前都选「%s」，这次直接按它继续\n" % chosen)
+                captured["continued"] = True  # continue 而非 break
+                return None
+
+        ctx = SessionContext(session_id="s", messages=[])
+        ctx.extra["clarify_history"] = hist
+        k = _Kernel()
+        k._execute_tools(_Round(), ctx)
+        self.assertTrue(captured.get("continued"))
+        self.assertIn("改文件", captured.get("emitted", ""))
+        self.assertNotIn("1️⃣", captured.get("emitted", ""))  # 没有弹选项

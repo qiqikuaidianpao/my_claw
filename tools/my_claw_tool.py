@@ -70,8 +70,7 @@ class MyClawTool(Tool):
         )
         user_instructions = str(tool_parameters.get("system_prompt") or "")
         memory_turns = int(tool_parameters.get("memory_turns") or 12)
-        # clarify_enabled 默认开；编排者可关掉 ask_user（隐藏工具+提示词切换到直接执行）
-        clarify_enabled = str(tool_parameters.get("clarify_enabled")).lower() not in ("false", "0", "no", "none")
+        clarify_enabled = self._parse_clarify_flag(tool_parameters.get("clarify_enabled"))
 
         if not query:
             yield self.create_text_message("❌缺少 query 参数")
@@ -130,6 +129,7 @@ class MyClawTool(Tool):
         if raw_pending and not clarify_enabled:
             kv.set(PENDING_KEY, b"")  # 澄清已关停，清掉历史挂起
             raw_pending = None
+        clarify_history = None
         if raw_pending:
             pending_clarify = PendingClarify.from_json(raw_pending)
             if pending_clarify is None or pending_clarify.expired() or not pending_clarify.options:
@@ -138,6 +138,15 @@ class MyClawTool(Tool):
                 hit = match_option(query, pending_clarify.options)
                 if hit is not None:
                     kv.set(PENDING_KEY, b"")
+                    # 记住这次选择：同类问题下次标注，高频同选自动照做
+                    try:
+                        from core.clarify import ClarifyHistory
+
+                        ClarifyHistory(kv, app_id, user_id).record(
+                            pending_clarify.question, pending_clarify.options, hit
+                        )
+                    except Exception as e:
+                        log.warning("clarify_history_record_failed", detail=str(e))
                     query = build_continuation(pending_clarify, hit)
                 else:
                     pending_clarify.misses += 1
@@ -193,6 +202,10 @@ class MyClawTool(Tool):
         ctx.extra["persona"] = persona
         ctx.extra["kv_store"] = kv  # ask_user 澄清工具写 pending 用
         ctx.extra["original_query"] = query
+        if clarify_enabled:
+            from core.clarify import ClarifyHistory
+
+            ctx.extra["clarify_history"] = ClarifyHistory(kv, app_id, user_id)
         if not clarify_enabled:
             ctx.extra["hidden_tools"] = {"ask_user"}  # 编排者关停澄清：模型根本看不到该工具
         if str(tool_parameters.get("exec_approval_enabled") or "").lower() in ("true", "1", "yes"):
@@ -232,6 +245,11 @@ class MyClawTool(Tool):
             yield self.create_text_message(usage.format_text(usage_payload))
 
     # ── helpers ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_clarify_flag(value) -> bool:
+        """clarify_enabled 默认开；未配置（None）视为开——老工作流节点没有这个参数。"""
+        return True if value is None else str(value).lower() not in ("false", "0", "no", "none")
 
     @staticmethod
     def _skill_management_command(query: str) -> tuple[str, int] | None:

@@ -83,9 +83,16 @@ def match_option(reply: str, options: list[str]) -> int | None:
     return None
 
 
-def format_question(question: str, options: list[str]) -> str:
-    """Render the user-facing clarification prompt with emoji-numbered options."""
-    chips = [f"{chip} {opt}" for chip, opt in zip("1️⃣ 2️⃣ 3️⃣ 4️⃣".split(), options)]
+def format_question(question: str, options: list[str], hint_index: int | None = None) -> str:
+    """Render the user-facing clarification prompt with emoji-numbered options.
+
+    hint_index: option index the user picked on a similar past question —
+    marked with a star so recurring choices are recognizable at a glance.
+    """
+    chips = []
+    for i, (chip, opt) in enumerate(zip("1️⃣ 2️⃣ 3️⃣ 4️⃣".split(), options)):
+        mark = " ⭐（上次的选择）" if hint_index == i else ""
+        chips.append(f"{chip} {opt}{mark}")
     return f"🤔 {question}\n\n" + "\n".join(chips) + "\n\n回复数字即可，也可以直接补充说明。"
 
 
@@ -93,3 +100,69 @@ def build_continuation(pending: PendingClarify, chosen_index: int) -> str:
     """Fold the user's choice back into the original task for re-execution."""
     chosen = pending.options[chosen_index]
     return f"{pending.original_query}\n（用户澄清：选择了选项{chosen_index + 1} — {chosen}）"
+
+
+# ── 澄清历史：同类问题记住用户的选择 ────────────────────────────────────────
+
+HISTORY_LIMIT = 20
+SIM_ANNOTATE = 0.45  # 与历史问题足够相似 → 在对应选项上标注“上次的选择”
+SIM_AUTO = 0.60  # 高度相似且同一选项已被选过 ≥2 次 → 自动按历史选择继续
+
+
+def _bigrams(s: str) -> set[str]:
+    s = re.sub(r"\s+", "", s)
+    return {s[i : i + 2] for i in range(len(s) - 1)} if len(s) > 1 else {s}
+
+
+def dice(a: str, b: str) -> float:
+    """字符二元组 Dice 相似度（0~1），无依赖、确定性。"""
+    ba, bb = _bigrams(a), _bigrams(b)
+    if not ba or not bb:
+        return 0.0
+    return 2 * len(ba & bb) / (len(ba) + len(bb))
+
+
+class ClarifyHistory:
+    """澄清选择的轻量历史：问题+选项+所选，用于选项标注与高频自动继续。"""
+
+    def __init__(self, kv, app_id: str, user_id: str = "") -> None:
+        self.kv = kv
+        scope = f":user:{user_id}" if user_id else ""
+        self._key = f"claw:clarify_history:{app_id or 'app'}{scope}"
+
+    def _load(self) -> list[dict]:
+        raw = self.kv.get(self._key)
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw.decode("utf-8", errors="ignore"))
+            return data if isinstance(data, list) else []
+        except (ValueError, TypeError):
+            return []
+
+    def record(self, question: str, options: list[str], pick: int) -> None:
+        if not (0 <= pick < len(options)):
+            return
+        items = self._load()
+        items.append({"q": question[:200], "opts": [str(o)[:120] for o in options], "pick": pick})
+        self.kv.set(self._key, json.dumps(items[-HISTORY_LIMIT:], ensure_ascii=False).encode("utf-8"))
+
+    def lookup(self, question: str, options: list[str]) -> dict:
+        """返回 {"annotate": 索引|None, "auto": 索引|None}。
+
+        annotate：与最相似历史问题对应的当时所选（相似度≥SIM_ANNOTATE）；
+        auto：高度相似（≥SIM_AUTO）的记录中同一选项被选过≥2次——直接照做不打断。
+        """
+        best_sim, best_pick = 0.0, None
+        auto_counts: dict[int, int] = {}
+        for rec in self._load():
+            sim = dice(question, str(rec.get("q", "")))
+            if sim >= SIM_AUTO:
+                auto_counts[rec["pick"]] = auto_counts.get(rec["pick"], 0) + 1
+            if sim > best_sim and 0 <= rec.get("pick", -1) < len(options):
+                best_sim, best_pick = sim, rec["pick"]
+        auto = None
+        for idx, n in auto_counts.items():
+            if n >= 2 and idx < len(options):
+                auto = idx
+        return {"annotate": best_pick if best_sim >= SIM_ANNOTATE else None, "auto": auto}
