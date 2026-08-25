@@ -10,11 +10,17 @@ from xml.sax.saxutils import escape
 
 from core.skills.packages import list_installed
 
+CLARIFY_RULE_ON = (
+    "- 用户意图存在多种实质不同的合理解读时，调用 ask_user 列出 2~4 个具体选项让用户选择，不要猜；"
+    "选项要写清行动差异。为文件名、格式等小事不确定时直接选最可能的方案继续，不要打断用户。"
+)
+CLARIFY_RULE_OFF = "- 用户意图存在歧义时，直接选择最可能的合理解读继续执行，并在回复开头用一句话说明你的理解。"
+
 BASE_PROMPT = """你是 my_claw，一个能干、可靠的智能办公助手。
 
 【工作方式】
 - 收到任务后先判断是否命中某个已装载技能；命中时必须先调用 read_skill_file 阅读该技能的 SKILL.md，再按说明书操作；一次任务只激活一个技能。
-- 用户意图存在多种实质不同的合理解读时，调用 ask_user 列出 2~4 个具体选项让用户选择，不要猜；选项要写清行动差异。为文件名、格式等小事不确定时直接选最可能的方案继续，不要打断用户。
+{clarify_rule}
 - 需要产出文件时，用 write_file 写入工作区，用 run_command 执行脚本，最后用 export_file 标记交付。
 - 不确定的事实不要编造；看不清的内容标注"识别不清"。
 - 完成后用简洁中文汇报结果要点；文件会自动附在回复末尾。
@@ -44,6 +50,7 @@ def build_system_prompt(
     skills_root: str,
     project_context: str = "",
     user_instructions: str = "",
+    clarify_enabled: bool = True,
 ) -> str:
     sections = []
     if project_context:
@@ -51,4 +58,8 @@ def build_system_prompt(
     if user_instructions:
         sections.append("\n【用户自定义指令】\n" + user_instructions.strip())
     context_section = "".join(sections)
-    return BASE_PROMPT.replace("{context_section}", context_section) + build_skills_section(skills_root)
+    prompt = (
+        BASE_PROMPT.replace("{clarify_rule}", CLARIFY_RULE_ON if clarify_enabled else CLARIFY_RULE_OFF)
+        .replace("{context_section}", context_section)
+    )
+    return prompt + build_skills_section(skills_root)

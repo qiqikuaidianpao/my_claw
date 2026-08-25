@@ -70,8 +70,11 @@ This plugin provides two tools:
    Tip: send `reset persona` to clear identity and memory and
    start over.
 
-   Memory is manageable in chat (Chinese commands): list memories, delete
-   memory No. N, edit memory No. N, browse archived experiences. Questions
+   Memory is manageable right in the chat: say `view memory` to list all
+   entries with numbers, `delete memory 2` to remove one, `edit memory 2
+   to ...` to update one, `view archived memory` to browse archived
+   experiences (Chinese equivalents work too: view / delete / edit /
+   archive memory). Replies follow the language of your command. Questions
    like "do you remember my birthday" are answered normally — they are
    never mistaken for management commands. Each night my_claw also digests
    yesterday's conversations into typed memory entries (fact / preference /
@@ -79,6 +82,10 @@ This plugin provides two tools:
    duplicates, keeps the newer side of conflicts, and archives experiences
    untouched for 60+ days (original backed up first, nothing silently
    deleted).
+
+   Builders: the clarify interaction can be turned off per workflow node
+   with the `clarify_enabled` parameter — the agent then always proceeds
+   with the most likely interpretation instead of asking.
 
 5. Use Skill Manager to extend my_claw with custom tools — upload a skill
    pack (.zip) and say "install skill". Skills support

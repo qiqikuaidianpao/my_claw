@@ -147,6 +147,21 @@ parameters:
       pt_BR: "Sensitive commands require approval."
       ja_JP: "機密コマンドには承認が必要。"
     form: form
+  - name: clarify_enabled
+    type: boolean
+    required: false
+    default: true
+    label:
+      en_US: Clarify interaction
+      zh_Hans: 澄清交互
+      pt_BR: Clarify interaction
+      ja_JP: 確認インタラクション
+    human_description:
+      en_US: "When on, the agent may ask 2-4 numbered options for genuinely ambiguous requests. Turn off to always proceed with the most likely interpretation."
+      zh_Hans: "开启后，遇到实质歧义的任务 agent 会列出2~4个选项让用户选择；关闭则始终按最可能的解读直接执行。"
+      pt_BR: "Permite que o agente peça esclarecimento em solicitações ambíguas."
+      ja_JP: "曖昧な要求について選択肢を提示して確認します。"
+    form: form
   - name: skip_onboarding
     type: boolean
     required: false

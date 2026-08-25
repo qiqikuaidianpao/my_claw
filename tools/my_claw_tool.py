@@ -70,6 +70,8 @@ class MyClawTool(Tool):
         )
         user_instructions = str(tool_parameters.get("system_prompt") or "")
         memory_turns = int(tool_parameters.get("memory_turns") or 12)
+        # clarify_enabled 默认开；编排者可关掉 ask_user（隐藏工具+提示词切换到直接执行）
+        clarify_enabled = str(tool_parameters.get("clarify_enabled")).lower() not in ("false", "0", "no", "none")
 
         if not query:
             yield self.create_text_message("❌缺少 query 参数")
@@ -125,6 +127,9 @@ class MyClawTool(Tool):
         from core.clarify import PENDING_KEY, PendingClarify, build_continuation, match_option
 
         raw_pending = kv.get(PENDING_KEY)
+        if raw_pending and not clarify_enabled:
+            kv.set(PENDING_KEY, b"")  # 澄清已关停，清掉历史挂起
+            raw_pending = None
         if raw_pending:
             pending_clarify = PendingClarify.from_json(raw_pending)
             if pending_clarify is None or pending_clarify.expired() or not pending_clarify.options:
@@ -176,6 +181,7 @@ class MyClawTool(Tool):
             skills_root=skills_root,
             project_context=self._memory_context(persona, memory),
             user_instructions=user_instructions,
+            clarify_enabled=clarify_enabled,
         )
 
         for f in tool_parameters.get("files") or []:
@@ -187,6 +193,8 @@ class MyClawTool(Tool):
         ctx.extra["persona"] = persona
         ctx.extra["kv_store"] = kv  # ask_user 澄清工具写 pending 用
         ctx.extra["original_query"] = query
+        if not clarify_enabled:
+            ctx.extra["hidden_tools"] = {"ask_user"}  # 编排者关停澄清：模型根本看不到该工具
         if str(tool_parameters.get("exec_approval_enabled") or "").lower() in ("true", "1", "yes"):
             ctx.extra["approval_check"] = self._make_approval_check(kv, query, user_id, app_id, conversation_id)
 

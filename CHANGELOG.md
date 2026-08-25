@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1（2026-08-25，编排开关与国际化命令）
+
+- **clarify_enabled 编排开关**：工具节点参数（默认开）。关闭后 ask_user 从模型工具列表隐藏、提示词切换为"按最可能解读直接执行"，并清理历史挂起的澄清状态——编排者可按场景彻底关停澄清交互
+- **记忆管理命令英文别名**：`view memory` / `delete memory N` / `edit memory N to …` / `view archived memory`（含 forget/remove/update/change、my memories、entry no. 等变体），回复语言跟随命令语言（中英双语模板）
+- 工具 schema 增加 clarify_enabled 参数（中/英/葡/日四语说明）
+
 ## 0.6.0（2026-08-24，市场发布版：澄清交互 + agentskills 标准对齐 + 记忆升级）
 
 - **澄清交互（ask_user）**：模糊任务不再瞎猜——agent 可在执行中途弹出 2–4 个带 emoji 序号的选项（1️⃣2️⃣3️⃣4️⃣），回复数字即按所选解读继续；防骚扰护栏：仅"实质不同的解读"才问、无关回复两次自动丢弃、24 小时过期；纯确定性匹配不耗额外 LLM 调用

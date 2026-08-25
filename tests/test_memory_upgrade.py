@@ -305,12 +305,10 @@ class TestLooksLikeName(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        import importlib.util
-        import sys as _sys
-        spec = importlib.util.find_spec("tools.my_claw_tool")
-        if spec is None:  # dify_plugin 未安装环境（CI精简）下跳过
-            raise unittest.SkipTest("tools.my_claw_tool requires dify_plugin")
-        from tools.my_claw_tool import looks_like_name
+        try:  # 导入会连带 dify_plugin SDK（需 py3.10+）；本机 3.9 环境跳过
+            from tools.my_claw_tool import looks_like_name
+        except ImportError:
+            raise unittest.SkipTest("tools.my_claw_tool requires dify_plugin (py3.10+)")
         cls.fn = staticmethod(looks_like_name)
 
     def test_real_names_accepted(self):
@@ -327,3 +325,88 @@ class TestLooksLikeName(unittest.TestCase):
 
     def test_long_rejected(self):
         self.assertFalse(self.fn("一个特别特别特别特别特别特别长的名字"))
+
+
+# ═══ 0.6.1: English aliases + bilingual replies ═══════════════════════════
+
+class TestEnglishRouting(unittest.TestCase):
+    def test_en_list_variants(self):
+        for q in ("view memory", "Show memory", "list memories", "LIST MEMORY", "display my memories", "memory list", "please view memory"):
+            cmd = parse_memory_command(q)
+            self.assertIsNotNone(cmd, q)
+            self.assertEqual(cmd.action, "list", q)
+            self.assertEqual(cmd.lang, "en", q)
+
+    def test_en_delete_variants(self):
+        cases = {"delete memory 2": 1, "forget memory 1": 0, "remove memory 3": 2, "Delete my memory 12": 11, "delete memory entry no. 4": 3}
+        for q, idx in cases.items():
+            cmd = parse_memory_command(q)
+            self.assertIsNotNone(cmd, q)
+            self.assertEqual(cmd.action, "delete", q)
+            self.assertEqual(cmd.index, idx, q)
+            self.assertEqual(cmd.lang, "en", q)
+
+    def test_en_edit_variants(self):
+        cases = {
+            "edit memory 1 to prefer concise reports": (0, "prefer concise reports"),
+            "Update memory 2 to 24 months": (1, "24 months"),
+            "change my memory 3 to bullet style": (2, "bullet style"),
+        }
+        for q, (idx, new) in cases.items():
+            cmd = parse_memory_command(q)
+            self.assertIsNotNone(cmd, q)
+            self.assertEqual(cmd.action, "edit", q)
+            self.assertEqual(cmd.index, idx, q)
+            self.assertEqual(cmd.new_text, new, q)
+
+    def test_en_archive(self):
+        for q in ("view archived memory", "show archived memories", "list my archived memories", "memory archive"):
+            cmd = parse_memory_command(q)
+            self.assertIsNotNone(cmd, q)
+            self.assertEqual(cmd.action, "archive", q)
+
+    def test_en_negatives(self):
+        for q in ("do you remember my birthday", "what is memory", "memory", "delete memory", "remember this word", "how is your memory going today", "in memory of the project"):
+            self.assertIsNone(parse_memory_command(q), q)
+
+    def test_cn_still_primary_and_lang_zh(self):
+        cmd = parse_memory_command("查看记忆")
+        self.assertEqual((cmd.action, cmd.lang), ("list", "zh"))
+        self.assertEqual(parse_memory_command("delete memory 2").lang, "en")
+
+
+class TestBilingualReplies(unittest.TestCase):
+    def test_en_list_reply(self):
+        kv = FakeKV()
+        p = PersonaStore(kv, app_id="a1")
+        p.merge_managed({"user_facts": ["[事实] x"]})
+        text = execute_memory_command(p, parse_memory_command("view memory"))
+        self.assertIn("Long-term memory", text)
+        self.assertIn("1. [事实] x", text)
+        self.assertIn("delete memory N", text)
+
+    def test_en_delete_and_edit_replies(self):
+        p = seeded_persona()
+        reply = execute_memory_command(p, parse_memory_command("delete memory 1"))
+        self.assertIn("Deleted entry 1", reply)
+        reply = execute_memory_command(p, parse_memory_command("edit memory 1 to 24 months"))
+        self.assertIn("Updated entry 1", reply)
+        self.assertIn("old:", reply)
+        self.assertIn("new: 24 months", reply)
+
+    def test_en_out_of_range_and_empty_archive(self):
+        p = seeded_persona()
+        reply = execute_memory_command(p, parse_memory_command("delete memory 9"))
+        self.assertIn("no entry 9", reply)
+        kv = FakeKV()
+        p2 = PersonaStore(kv, app_id="a1")
+        reply = execute_memory_command(p2, parse_memory_command("view archived memory"))
+        self.assertIn("archive is empty", reply)
+
+    def test_en_archive_mentions_count_in_list(self):
+        kv = FakeKV()
+        p = PersonaStore(kv, app_id="a1")
+        p.merge_managed({"user_facts": ["[事实] x"]})
+        p.write("MEMORY.archive.md", "# 归档记忆\n## 归档于 2026-08-24\n- [经历] old\n")
+        text = execute_memory_command(p, parse_memory_command("view memory"))
+        self.assertIn("1 archived", text)

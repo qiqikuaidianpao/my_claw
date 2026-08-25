@@ -59,7 +59,7 @@ class AgentKernel:
 
             log.debug("kernel_step", step=step + 1, messages=len(ctx.messages), elapsed=round(ctx.elapsed, 1))
 
-            round_ = self.llm.invoke_round(system=ctx.system_prompt, messages=ctx.messages, tools=self._tool_schemas())
+            round_ = self.llm.invoke_round(system=ctx.system_prompt, messages=ctx.messages, tools=self._tool_schemas(ctx))
             ctx.rounds.append(round_)
 
             if round_.has_tool_calls:
@@ -177,10 +177,12 @@ class AgentKernel:
 
     # ── helpers ──────────────────────────────────────────────────────────
 
-    def _tool_schemas(self) -> list[dict[str, Any]]:
+    def _tool_schemas(self, ctx: SessionContext | None = None) -> list[dict[str, Any]]:
+        hidden = set((ctx.extra.get("hidden_tools") if ctx is not None else None) or ())
         return [
             {"type": "function", "function": {"name": s.name, "description": s.description, "parameters": s.parameters}}
             for s in tools_reg.all_specs()
+            if s.name not in hidden
         ]
 
     def _emit_final(self, ctx: SessionContext, round_: LLMRound) -> None:
