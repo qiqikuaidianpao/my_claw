@@ -44,7 +44,15 @@ class DifyLLMClient:
                     stream=True,
                 )
             except TypeError:
-                # Older SDKs reject the tools kwarg on some paths.
+                # Older SDKs reject the tools kwarg on some paths. Without
+                # tools the model cannot call anything structured, so this
+                # downgrade must be visible — a model that then narrates tool
+                # calls as text trips the kernel's fake-tool-text guard.
+                log.warning(
+                    "llm_tools_unavailable",
+                    detail="SDK rejected tools kwarg; retrying without structured tools",
+                    tool_count=len(sdk_tools or []),
+                )
                 response = self.session.model.llm.invoke(
                     model_config=self.model_config,
                     prompt_messages=prompt_messages,

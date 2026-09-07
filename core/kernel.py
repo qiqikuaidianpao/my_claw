@@ -22,6 +22,7 @@ from core.llm import LLMRound, visible_text
 from core.ports import LLMClient, MessageEmitter
 from core.session import SessionContext
 from core.tools import registry as tools_reg
+from core.tool_text_guard import looks_like_fake_tool_text
 
 
 class AgentKernel:
@@ -81,6 +82,28 @@ class AgentKernel:
                     continue
                 ctx.final_text = "模型连续返回空响应，未生成任何结果。"
                 break
+
+            # Plain text that pretends to call tools or narrates tool results
+            # executes nothing — never publish it as a delivered outcome.
+            has_real_tool_calls = any(m.get("role") == "tool" for m in ctx.messages)
+            if looks_like_fake_tool_text(round_.text, has_real_tool_calls=has_real_tool_calls):
+                ctx.fake_tool_texts += 1
+                if ctx.fake_tool_texts >= 3:
+                    ctx.final_text = (
+                        "❌模型连续把工具调用/工具结果写成普通文本，这些文字不会执行任何操作；"
+                        "本轮没有发生结构化工具调用，无法安全完成文件生成、校验或导出。"
+                        "请更换支持 function calling 的模型后重试。"
+                    )
+                    self._emit_text(ctx.final_text)
+                    ctx.final_text_emitted = True
+                    break
+                self._append_user_note(
+                    ctx,
+                    "检测到你把工具调用或工具结果写进了普通文本，那不会执行任何操作。"
+                    "请使用本轮提供的结构化 function calling 发起真实工具调用；"
+                    "无法调用工具时直接说明阻塞原因，不要模拟工具调用、工具参数或工具返回。",
+                )
+                continue
 
             ctx.final_text = round_.text
             ctx.messages.append({"role": "assistant", "content": round_.text})

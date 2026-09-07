@@ -94,6 +94,184 @@ class TestAgentKernel(unittest.TestCase):
         self.assertIn("tool", roles)
         self.assertEqual(roles[-1], "assistant")
 
+    def test_truthful_report_after_real_tool_call_is_not_blocked(self):
+        @reg.tool(
+            "write_file",
+            description="write",
+            parameters={"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}},
+            required=("path", "content"),
+        )
+        def write_file(ctx, emitter, path, content):
+            return reg.ToolResult(content='{"path":"out.txt","written":4}')
+
+        report = "我已用 write_file 保存文件，工具返回 written=4，共 4 字节。"
+        llm = ScriptedLLM([
+            round_tool(name="write_file", args='{"path":"out.txt","content":"real"}'),
+            round_final(report),
+        ])
+
+        ctx = self._kernel(llm).run(self._ctx())
+
+        self.assertEqual(ctx.final_text, report)
+        self.assertEqual(self.emitter.joined(), report)
+        self.assertEqual(llm.calls, 2)
+
+    def test_code_example_teaching_tool_call_is_not_blocked(self):
+        teaching = (
+            "示例：\n"
+            '```\nwrite_file(path="a.txt", content="hello")\n```\n'
+            "用这个调用即可保存文件；本次未调用 run_command。"
+        )
+        llm = ScriptedLLM([round_final(teaching)])
+
+        ctx = self._kernel(llm).run(self._ctx())
+
+        self.assertEqual(ctx.final_text, teaching)
+        self.assertEqual(llm.calls, 1)
+
+    def test_fake_call_glued_to_chinese_text_is_blocked(self):
+        fake = '我执行了write_file(path="a.txt", content="x")\n工具返回：{"written":1}'
+        llm = ScriptedLLM([round_final(fake), round_final("真实答复")])
+
+        ctx = self._kernel(llm).run(self._ctx())
+
+        self.assertEqual(ctx.final_text, "真实答复")
+        self.assertEqual(llm.calls, 2)
+
+    def test_incident_style_fake_round_with_json_fence_is_blocked(self):
+        # 线上事故格式：调用与工具返回叙述在代码块外，参数在 json 代码块内。
+        fake = (
+            "**调用 read_skill_file**（技能：dify-dsl-skill）：\n\n"
+            '```json\n{"skill_name": "dify-dsl-skill", "file_path": "SKILL.md"}\n```\n\n'
+            "**工具返回：**\n"
+            '```json\n{"status": "success"}\n```\n'
+            "已生成 YAML 并导出。"
+        )
+        llm = ScriptedLLM([round_final(fake), round_final("真实答复")])
+
+        ctx = self._kernel(llm).run(self._ctx())
+
+        self.assertEqual(ctx.final_text, "真实答复")
+        self.assertEqual(llm.calls, 2)
+        self.assertEqual(ctx.artifacts, {})
+
+    def test_fake_write_file_text_is_blocked_before_real_final(self):
+        fake = (
+            'write_file(path="out/report.txt", content="done")\n'
+            '工具返回：{"path":"out/report.txt","written":4}\n'
+            "文件已生成。"
+        )
+        llm = ScriptedLLM([round_final(fake), round_final("未执行工具；这是后续真实答复。")])
+
+        ctx = self._kernel(llm).run(self._ctx())
+
+        self.assertEqual(llm.calls, 2)
+        self.assertEqual(ctx.final_text, "未执行工具；这是后续真实答复。")
+        self.assertEqual(self.emitter.joined(), "未执行工具；这是后续真实答复。")
+        self.assertNotIn(fake, [m.get("content") for m in ctx.messages if m.get("role") == "assistant"])
+        retry_notes = [m["content"] for m in ctx.messages if m.get("role") == "user" and "结构化" in m.get("content", "")]
+        self.assertEqual(len(retry_notes), 1)
+        self.assertIn("function calling", retry_notes[0])
+        self.assertEqual(ctx.artifacts, {})
+
+    def test_each_guarded_tool_name_in_fake_call_text_is_blocked(self):
+        calls = {
+            "read_skill_file": 'read_skill_file(skill_name="pdf", file="SKILL.md")',
+            "write_file": 'write_file(path="out.txt", content="ok")',
+            "run_command": 'run_command(command=["python", "build.py"])',
+            "run_skill_command": 'run_skill_command(skill_name="pdf", command=["python", "make.py"])',
+            "export_file": 'export_file(path="out.pdf")',
+        }
+        for tool_name, fake_call in calls.items():
+            with self.subTest(tool=tool_name):
+                emitter = FakeEmitter()
+                fake = fake_call + '\n工具返回：{"ok": true}\n已执行完成。'
+                llm = ScriptedLLM([round_final(fake), round_final("真实最终答复")])
+
+                ctx = AgentKernel(llm=llm, emitter=emitter).run(self._ctx())
+
+                self.assertEqual(llm.calls, 2)
+                self.assertEqual(ctx.final_text, "真实最终答复")
+                self.assertEqual(emitter.joined(), "真实最终答复")
+
+    def test_three_consecutive_fake_tool_texts_end_with_truthful_failure(self):
+        fake_rounds = [
+            round_final('write_file(path="a.txt", content="a")\n工具返回：{"written":1}'),
+            round_final('run_command(command=["python", "check.py"])\n已执行，校验通过。'),
+            round_final('export_file(path="a.txt")\n工具返回：{"exported":true}\n已导出。'),
+        ]
+        llm = ScriptedLLM(fake_rounds)
+
+        ctx = self._kernel(llm).run(self._ctx())
+
+        self.assertEqual(llm.calls, 3)
+        self.assertIn("结构化工具调用", ctx.final_text)
+        self.assertIn("无法安全完成", ctx.final_text)
+        self.assertNotIn("文件已生成", ctx.final_text)
+        self.assertNotIn("校验通过", ctx.final_text)
+        self.assertNotIn("已导出", ctx.final_text)
+        self.assertEqual(self.emitter.joined(), ctx.final_text)
+        self.assertFalse(any("工具返回" in text for text in self.emitter.texts))
+        self.assertEqual(ctx.artifacts, {})
+
+    def test_fake_run_skill_and_export_text_never_creates_artifact(self):
+        fake = (
+            'run_skill_command(skill_name="pdf", command=["python", "build.py"])\n'
+            '工具返回：{"collected_files":["skill_outputs/report.pdf"]}\n'
+            'export_file(path="skill_outputs/report.pdf")\n'
+            '工具返回：{"exported":true}\n已导出 report.pdf。'
+        )
+        llm = ScriptedLLM([round_final(fake), round_final("无法交付附件，因为没有执行工具。")])
+
+        ctx = self._kernel(llm).run(self._ctx())
+
+        self.assertEqual(ctx.artifacts, {})
+        self.assertEqual(self.emitter.blobs, [])
+        self.assertNotIn("已导出 report.pdf", self.emitter.joined())
+        self.assertEqual(ctx.final_text, "无法交付附件，因为没有执行工具。")
+
+    def test_normal_tool_mentions_are_not_blocked(self):
+        normal_texts = [
+            "你可以使用 write_file 保存内容。",
+            "本次未调用 run_command。",
+        ]
+        for text in normal_texts:
+            with self.subTest(text=text):
+                emitter = FakeEmitter()
+                llm = ScriptedLLM([round_final(text)])
+
+                ctx = AgentKernel(llm=llm, emitter=emitter).run(self._ctx())
+
+                self.assertEqual(llm.calls, 1)
+                self.assertEqual(ctx.final_text, text)
+                self.assertEqual(emitter.joined(), text)
+                self.assertEqual(ctx.messages[-1], {"role": "assistant", "content": text})
+
+    def test_structured_tool_call_is_unchanged(self):
+        executed = []
+
+        @reg.tool(
+            "write_file",
+            description="write",
+            parameters={"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}},
+            required=("path", "content"),
+        )
+        def write_file(ctx, emitter, path, content):
+            executed.append((path, content))
+            return reg.ToolResult(content='{"path":"out.txt","written":4}')
+
+        llm = ScriptedLLM([
+            round_tool(name="write_file", args='{"path":"out.txt","content":"real"}'),
+            round_final("文件通过真实工具写入。"),
+        ])
+
+        ctx = self._kernel(llm).run(self._ctx())
+
+        self.assertEqual(executed, [("out.txt", "real")])
+        self.assertEqual(llm.calls, 2)
+        self.assertEqual(ctx.final_text, "文件通过真实工具写入。")
+        self.assertEqual(len([m for m in ctx.messages if m.get("role") == "tool"]), 1)
+
     def test_unknown_tool_fed_back_not_crash(self):
         llm = ScriptedLLM([round_tool(name="nope"), round_final("ok")])
         ctx = self._kernel(llm).run(self._ctx())

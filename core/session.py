@@ -91,6 +91,7 @@ class SessionContext:
 
     # misc counters / extension bag (persona, approval hooks...)
     empty_responses: int = 0
+    fake_tool_texts: int = 0
     extra: dict[str, Any] = field(default_factory=dict)
     rounds: list[LLMRound] = field(default_factory=list)
 
